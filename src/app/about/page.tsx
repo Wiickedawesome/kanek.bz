@@ -1,28 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const ScrollVelocityText = dynamic(
-  () => import("@/components/ui/scroll-velocity-text").then(m => ({ default: m.ScrollVelocityText })),
-  { ssr: false }
-);
-const AnimatedCounter = dynamic(
-  () => import("@/components/ui/animated-counter").then(m => ({ default: m.AnimatedCounter })),
-  { ssr: false }
-);
-const AuroraBlobs = dynamic(
-  () => import("@/components/ui/aurora-blobs").then(m => ({ default: m.AuroraBlobs })),
-  { ssr: false }
-);
-const MagneticButton = dynamic(
-  () => import("@/components/ui/magnetic-button").then(m => ({ default: m.MagneticButton })),
-  { ssr: false }
-);
+import { ScrollVelocityText } from "@/components/ui/scroll-velocity-text";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
+import { AuroraBlobs } from "@/components/ui/aurora-blobs";
+import { MagneticButton } from "@/components/ui/magnetic-button";
 
 /* ── animation helpers ── */
 const charReveal = {
