@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -65,7 +66,7 @@ const AnimatedRoadmap = React.forwardRef<HTMLDivElement, AnimatedRoadmapProps>(
 
     return (
       <div
-        ref={targetRef}
+        ref={ref ?? targetRef}
         className={cn("relative w-full max-w-4xl mx-auto py-24", className)}
         {...props}
       >
@@ -77,15 +78,17 @@ const AnimatedRoadmap = React.forwardRef<HTMLDivElement, AnimatedRoadmapProps>(
             viewport={{ once: true, amount: 0.2 }}
             className="absolute inset-0 top-10"
           >
-            <img
+            <Image
               src={mapImageSrc}
               alt="Roadmap background"
               className="h-full w-full object-contain"
+              fill
+              unoptimized
             />
           </motion.div>
         )}
 
-        <div className="relative h-[400px]">
+        <div className="relative h-100">
           <svg
             width="100%"
             height="100%"

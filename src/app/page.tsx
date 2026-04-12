@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import { useTheme } from "next-themes";
@@ -16,20 +17,27 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ParticleTextEffect } from "@/components/ui/particle-text-effect";
-import { ScrollRevealFeatures } from "@/components/ui/scroll-reveal-features";
-import { ScrollVelocityText } from "@/components/ui/scroll-velocity-text";
-import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { AuroraBlobs } from "@/components/ui/aurora-blobs";
-import { MagneticButton } from "@/components/ui/magnetic-button";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.7, ease: "easeOut" as const },
-  },
-};
+const ScrollRevealFeatures = dynamic(
+  () => import("@/components/ui/scroll-reveal-features").then(m => ({ default: m.ScrollRevealFeatures })),
+  { ssr: false }
+);
+const ScrollVelocityText = dynamic(
+  () => import("@/components/ui/scroll-velocity-text").then(m => ({ default: m.ScrollVelocityText })),
+  { ssr: false }
+);
+const AnimatedCounter = dynamic(
+  () => import("@/components/ui/animated-counter").then(m => ({ default: m.AnimatedCounter })),
+  { ssr: false }
+);
+const AuroraBlobs = dynamic(
+  () => import("@/components/ui/aurora-blobs").then(m => ({ default: m.AuroraBlobs })),
+  { ssr: false }
+);
+const MagneticButton = dynamic(
+  () => import("@/components/ui/magnetic-button").then(m => ({ default: m.MagneticButton })),
+  { ssr: false }
+);
 
 const features = [
   {
@@ -88,8 +96,8 @@ export default function Home() {
         className="relative min-h-screen overflow-hidden bg-[#f6f6f4] dark:bg-forest-900"
       >
         {/* Gradient orbs */}
-        <div className="pointer-events-none absolute -top-32 left-1/4 h-[500px] w-[500px] rounded-full bg-accent-green/8 blur-[120px]" />
-        <div className="pointer-events-none absolute bottom-0 right-1/4 h-[400px] w-[400px] rounded-full bg-accent-blue/8 blur-[100px]" />
+        <div className="pointer-events-none absolute -top-32 left-1/4 h-125 w-125 rounded-full bg-accent-green/8 blur-[120px]" />
+        <div className="pointer-events-none absolute bottom-0 right-1/4 h-100 w-100 rounded-full bg-accent-blue/8 blur-[100px]" />
 
         {/* Particle canvas as full background */}
         <motion.div
@@ -132,7 +140,7 @@ export default function Home() {
             <Button
               render={<Link href="/download" />}
               size="lg"
-              className="bg-neon-green hover:bg-neon-green/90 text-forest-900 font-bold text-base px-10 py-6 text-lg"
+              className="bg-neon-green hover:bg-neon-green/90 text-forest-900 font-bold px-10 py-6 text-lg"
             >
               Get the App
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -260,8 +268,8 @@ export default function Home() {
 
       {/* ─── How it works + CTA — single dark block ─── */}
       <section className="relative overflow-hidden bg-forest-900 text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(81,193,82,0.1),_transparent_60%)]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(101,246,123,0.12),_transparent_50%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(81,193,82,0.1),transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(101,246,123,0.12),transparent_50%)]" />
 
         {/* How it works */}
         <div className="relative mx-auto max-w-6xl px-4 pt-28 pb-20 sm:px-6">

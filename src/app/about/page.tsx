@@ -1,14 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useScroll, useTransform, useInView } from "framer-motion";
+import dynamic from "next/dynamic";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollVelocityText } from "@/components/ui/scroll-velocity-text";
-import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { AuroraBlobs } from "@/components/ui/aurora-blobs";
-import { MagneticButton } from "@/components/ui/magnetic-button";
+
+const ScrollVelocityText = dynamic(
+  () => import("@/components/ui/scroll-velocity-text").then(m => ({ default: m.ScrollVelocityText })),
+  { ssr: false }
+);
+const AnimatedCounter = dynamic(
+  () => import("@/components/ui/animated-counter").then(m => ({ default: m.AnimatedCounter })),
+  { ssr: false }
+);
+const AuroraBlobs = dynamic(
+  () => import("@/components/ui/aurora-blobs").then(m => ({ default: m.AuroraBlobs })),
+  { ssr: false }
+);
+const MagneticButton = dynamic(
+  () => import("@/components/ui/magnetic-button").then(m => ({ default: m.MagneticButton })),
+  { ssr: false }
+);
 
 /* ── animation helpers ── */
 const charReveal = {
@@ -76,8 +90,8 @@ export default function AboutPage() {
         ref={heroRef}
         className="relative flex min-h-screen items-center overflow-hidden bg-forest-900 text-white"
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,_rgba(81,193,82,0.12),_transparent_60%)]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,_rgba(73,103,246,0.08),_transparent_50%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,rgba(81,193,82,0.12),transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,rgba(73,103,246,0.08),transparent_50%)]" />
 
         <motion.div style={{ y: heroY, filter: heroFilter, scale: heroScale }} className="relative mx-auto max-w-6xl px-4 sm:px-6">
           <motion.p
@@ -353,7 +367,7 @@ export default function AboutPage() {
 
       {/* ─── Beliefs — stark, no icons ─── */}
       <section className="bg-forest-900 text-white py-32 sm:py-44">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(101,246,123,0.04),_transparent_70%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(101,246,123,0.04),transparent_70%)]" />
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <motion.p
             initial={{ opacity: 0 }}
@@ -421,7 +435,7 @@ export default function AboutPage() {
             opacity: [0.15, 0.3, 0.15],
           }}
           transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" as const }}
-          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full border border-accent-green/20 blur-sm"
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-125 w-125 rounded-full border border-accent-green/20 blur-sm"
         />
         <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
           <motion.h2

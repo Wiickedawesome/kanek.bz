@@ -49,9 +49,17 @@ const faqs = [
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => setOpen(!open)}
-      className="w-full text-left border-b border-border/40 py-6 group"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setOpen(!open);
+        }
+      }}
+      className="w-full text-left border-b border-border/40 py-6 group cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
         <h3 className="font-heading text-lg font-semibold sm:text-xl">
@@ -71,7 +79,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
       >
         <p className="pt-3 text-muted-foreground leading-relaxed">{a}</p>
       </motion.div>
-    </button>
+    </div>
   );
 }
 
@@ -80,8 +88,8 @@ export default function ContactPage() {
     <div>
       {/* ─── Hero — dramatic ─── */}
       <section className="relative overflow-hidden py-32 sm:py-44">
-        <div className="pointer-events-none absolute -top-32 right-1/4 h-[500px] w-[500px] rounded-full bg-accent-blue/6 blur-[140px]" />
-        <div className="pointer-events-none absolute bottom-0 left-0 h-[400px] w-[400px] rounded-full bg-accent-green/6 blur-[100px]" />
+        <div className="pointer-events-none absolute -top-32 right-1/4 h-125 w-125 rounded-full bg-accent-blue/6 blur-[140px]" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-100 w-100 rounded-full bg-accent-green/6 blur-[100px]" />
 
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <motion.div
@@ -224,7 +232,7 @@ export default function ContactPage() {
 
       {/* ─── Closing strip ─── */}
       <section className="relative overflow-hidden bg-forest-900 py-28 text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(73,103,246,0.08),_transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(73,103,246,0.08),transparent_60%)]" />
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
           <motion.div
             initial="hidden"

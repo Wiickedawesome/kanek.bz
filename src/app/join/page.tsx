@@ -71,8 +71,8 @@ export default function JoinPage() {
     <div>
       {/* ─── Hero — rallying cry ─── */}
       <section className="relative overflow-hidden py-32 sm:py-44">
-        <div className="pointer-events-none absolute -top-40 left-1/4 h-[600px] w-[600px] rounded-full bg-neon-green/6 blur-[140px]" />
-        <div className="pointer-events-none absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-accent-blue/6 blur-[100px]" />
+        <div className="pointer-events-none absolute -top-40 left-1/4 h-150 w-150 rounded-full bg-neon-green/6 blur-[140px]" />
+        <div className="pointer-events-none absolute bottom-0 right-0 h-100 w-100 rounded-full bg-accent-blue/6 blur-[100px]" />
 
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <motion.div initial="hidden" animate="visible" variants={stagger}>
@@ -105,7 +105,7 @@ export default function JoinPage() {
 
       {/* ─── Why join — bold manifesto ─── */}
       <section className="relative overflow-hidden bg-forest-900 py-32 text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_rgba(101,246,123,0.08),_transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(101,246,123,0.08),transparent_60%)]" />
 
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <motion.div
@@ -182,7 +182,7 @@ export default function JoinPage() {
               >
                 <motion.div
                   variants={slideIn(isEven ? "left" : "right")}
-                  className={`flex h-28 w-28 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br ${role.color}`}
+                  className={`flex h-28 w-28 shrink-0 items-center justify-center rounded-3xl bg-linear-to-br ${role.color}`}
                 >
                   <role.icon className="h-10 w-10 text-foreground" />
                 </motion.div>
@@ -270,8 +270,8 @@ export default function JoinPage() {
       </section>
 
       {/* ─── CTA — reach out ─── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-forest-900 via-forest-800 to-forest-900 py-28 text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(101,246,123,0.06),_transparent_70%)]" />
+      <section className="relative overflow-hidden bg-linear-to-br from-forest-900 via-forest-800 to-forest-900 py-28 text-white">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(101,246,123,0.06),transparent_70%)]" />
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
           <motion.div
             initial="hidden"
@@ -304,7 +304,7 @@ export default function JoinPage() {
               <Button
                 render={<a href="mailto:hello@kanek.bz" />}
                 size="lg"
-                className="bg-neon-green hover:bg-neon-green/90 text-forest-900 font-bold text-base px-10 py-6 text-lg"
+                className="bg-neon-green hover:bg-neon-green/90 text-forest-900 font-bold px-10 py-6 text-lg"
               >
                 hello@kanek.bz
                 <ArrowRight className="ml-2 h-5 w-5" />

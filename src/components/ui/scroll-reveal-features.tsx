@@ -45,11 +45,11 @@ function FeatureCard({ feature, index }: FeatureCardProps) {
         className="group relative overflow-hidden rounded-2xl border border-accent-green/20 bg-card p-8 shadow-xl transition-all duration-300 hover:border-accent-green/40"
       >
         {/* Glow effect */}
-        <div className="absolute -inset-6 -z-10 rounded-3xl bg-gradient-to-br from-accent-green/20 to-neon-green/20 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100" />
+        <div className="absolute -inset-6 -z-10 rounded-3xl bg-linear-to-br from-accent-green/20 to-neon-green/20 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100" />
 
         {/* Animated border gradient */}
         <div className="absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100">
-          <div className="absolute inset-0 animate-pulse rounded-2xl bg-gradient-to-r from-accent-green/0 via-accent-green/20 to-accent-green/0" />
+          <div className="absolute inset-0 animate-pulse rounded-2xl bg-linear-to-r from-accent-green/0 via-accent-green/20 to-accent-green/0" />
         </div>
 
         {/* Big editorial number */}
@@ -65,7 +65,7 @@ function FeatureCard({ feature, index }: FeatureCardProps) {
               rotate: [0, -10, 10, -10, 0],
               transition: { duration: 0.5 },
             }}
-            className="mb-6 inline-flex items-center justify-center rounded-xl bg-gradient-to-br from-accent-green/10 to-neon-green/10 p-4 text-accent-green shadow-lg shadow-accent-green/20"
+            className="mb-6 inline-flex items-center justify-center rounded-xl bg-linear-to-br from-accent-green/10 to-neon-green/10 p-4 text-accent-green shadow-lg shadow-accent-green/20"
           >
             <Icon className="h-12 w-12" />
           </motion.div>
@@ -91,7 +91,7 @@ function FeatureCard({ feature, index }: FeatureCardProps) {
             whileInView={{ width: "100%" }}
             viewport={{ once: true }}
             transition={{ duration: 0.8, delay: index * 0.1 + 0.3 }}
-            className="mt-6 h-px bg-gradient-to-r from-accent-green/50 via-accent-green/20 to-transparent"
+            className="mt-6 h-px bg-linear-to-r from-accent-green/50 via-accent-green/20 to-transparent"
           />
         </div>
       </motion.div>
