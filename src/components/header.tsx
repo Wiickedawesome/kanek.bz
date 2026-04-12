@@ -39,7 +39,7 @@ export function Header() {
             </Link>
           ))}
           <ThemeToggle />
-          <Button render={<Link href="/download" />} size="sm" className="ml-2 bg-accent-green hover:bg-accent-green/90 text-forest-900 font-semibold">
+          <Button nativeButton={false} render={<Link href="/download" />} size="sm" className="ml-2 bg-accent-green hover:bg-accent-green/90 text-forest-900 font-semibold">
             Get the App
           </Button>
         </nav>
@@ -65,7 +65,7 @@ export function Header() {
                     {link.label}
                   </Link>
                 ))}
-                <Button render={<Link href="/download" onClick={() => setOpen(false)} />} className="mt-4 bg-accent-green hover:bg-accent-green/90 text-forest-900 font-semibold">
+                <Button nativeButton={false} render={<Link href="/download" onClick={() => setOpen(false)} />} className="mt-4 bg-accent-green hover:bg-accent-green/90 text-forest-900 font-semibold">
                   Get the App
                 </Button>
               </div>

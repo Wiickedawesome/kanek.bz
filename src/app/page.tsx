@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ParticleTextEffect } from "@/components/ui/particle-text-effect";
-import { BentoGrid, BentoCard } from "@/components/ui/bento-grid";
+import { ScrollRevealFeatures } from "@/components/ui/scroll-reveal-features";
 import { ScrollVelocityText } from "@/components/ui/scroll-velocity-text";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
 import { AuroraBlobs } from "@/components/ui/aurora-blobs";
@@ -81,7 +81,7 @@ export default function Home() {
   const heroScale = useTransform(scrollYProgress, [0, 1], [1, 0.9]);
 
   return (
-    <>
+    <div>
       {/* ─── Hero — full-bleed dark with particle text ─── */}
       <section
         ref={heroRef}
@@ -215,40 +215,23 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── Features — Bento Grid ─── */}
+      {/* ─── Features — Scroll-Reveal Cards ─── */}
       <section className="py-12 sm:py-24">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <motion.h2
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.7, ease: "easeOut" as const }}
-            className="mb-12 font-heading text-3xl font-bold tracking-tight sm:text-4xl"
-          >
-            One board. Everything moves.
-          </motion.h2>
-          <BentoGrid>
-            {features.map((feature, i) => (
-              <BentoCard
-                key={feature.title}
-                title={feature.title}
-                description={feature.description}
-                icon={
-                  <feature.icon className="h-7 w-7 text-accent-green" />
-                }
-                index={i}
-                className={
-                  i === 0
-                    ? "sm:col-span-2"
-                    : i === 3
-                      ? "sm:col-span-2 lg:col-span-1"
-                      : i === 5
-                        ? "sm:col-span-2"
-                        : ""
-                }
-              />
-            ))}
-          </BentoGrid>
+          <ScrollRevealFeatures
+            features={features}
+            heading={
+              <motion.h2
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.7, ease: "easeOut" as const }}
+                className="mb-12 font-heading text-3xl font-bold tracking-tight sm:text-4xl"
+              >
+                One board. Everything moves.
+              </motion.h2>
+            }
+          />
         </div>
       </section>
 
@@ -374,6 +357,6 @@ export default function Home() {
           </motion.div>
         </div>
       </section>
-    </>
+    </div>
   );
 }

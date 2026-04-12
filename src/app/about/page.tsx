@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform, useInView } from "framer-motion";
 import { useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,54 @@ import { AnimatedCounter } from "@/components/ui/animated-counter";
 import { AuroraBlobs } from "@/components/ui/aurora-blobs";
 import { MagneticButton } from "@/components/ui/magnetic-button";
 
+/* ── animation helpers ── */
+const charReveal = {
+  hidden: { opacity: 0, y: 80, rotateX: 40 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    rotateX: 0,
+    transition: { duration: 0.7, delay: 0.08 * i, ease: [0.22, 1, 0.36, 1] as const },
+  }),
+};
+
+function SplitHeading({
+  lines,
+  accentIndex,
+}: {
+  lines: string[];
+  accentIndex?: number;
+}) {
+  let charCount = 0;
+  return (
+    <motion.h1
+      initial="hidden"
+      animate="visible"
+      className="mt-8 font-heading text-[clamp(3rem,8vw,7rem)] font-black leading-[0.9] tracking-tighter"
+      style={{ perspective: 600 }}
+    >
+      {lines.map((line, li) => (
+        <span key={li} className="block overflow-hidden">
+          {line.split("").map((ch) => {
+            const idx = charCount++;
+            return (
+              <motion.span
+                key={idx}
+                custom={idx}
+                variants={charReveal}
+                className={`inline-block ${li === accentIndex ? "text-accent-green" : ""}`}
+                style={{ whiteSpace: ch === " " ? "pre" : undefined }}
+              >
+                {ch}
+              </motion.span>
+            );
+          })}
+        </span>
+      ))}
+    </motion.h1>
+  );
+}
+
 export default function AboutPage() {
   const heroRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
@@ -17,9 +65,12 @@ export default function AboutPage() {
     offset: ["start start", "end start"],
   });
   const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
+  const heroBlur = useTransform(scrollYProgress, [0, 0.8, 1], [0, 0, 8]);
+  const heroFilter = useTransform(heroBlur, (v) => `blur(${v}px)`);
+  const heroScale = useTransform(scrollYProgress, [0, 1], [1, 0.95]);
 
   return (
-    <>
+    <div>
       {/* ─── Hero — immersive full-bleed ─── */}
       <section
         ref={heroRef}
@@ -28,7 +79,7 @@ export default function AboutPage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,_rgba(81,193,82,0.12),_transparent_60%)]" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,_rgba(73,103,246,0.08),_transparent_50%)]" />
 
-        <motion.div style={{ y: heroY }} className="relative mx-auto max-w-6xl px-4 sm:px-6">
+        <motion.div style={{ y: heroY, filter: heroFilter, scale: heroScale }} className="relative mx-auto max-w-6xl px-4 sm:px-6">
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -38,20 +89,10 @@ export default function AboutPage() {
             The story
           </motion.p>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 60 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.15, ease: "easeOut" as const }}
-            className="mt-8 font-heading text-[clamp(3rem,8vw,7rem)] font-black leading-[0.9] tracking-tighter"
-          >
-            400,000
-            <br />
-            <span className="text-accent-green">people.</span>
-            <br />
-            Zero
-            <br />
-            ride-share.
-          </motion.h1>
+          <SplitHeading
+            lines={["400,000", "people.", "Zero", "ride-share."]}
+            accentIndex={1}
+          />
 
           <motion.p
             initial={{ opacity: 0 }}
@@ -74,9 +115,13 @@ export default function AboutPage() {
           <motion.div
             animate={{ y: [0, 12, 0] }}
             transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" as const }}
-            className="h-10 w-6 rounded-full border-2 border-white/20 flex items-start justify-center pt-2"
+            className="relative h-10 w-6 rounded-full border-2 border-white/20 flex items-start justify-center pt-2"
           >
-            <div className="h-2 w-1 rounded-full bg-neon-green" />
+            <motion.div
+              animate={{ opacity: [0.4, 1, 0.4], boxShadow: ["0 0 4px #65f67b", "0 0 12px #65f67b", "0 0 4px #65f67b"] }}
+              transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" as const }}
+              className="h-2 w-1 rounded-full bg-neon-green"
+            />
           </motion.div>
         </motion.div>
       </section>
@@ -124,9 +169,15 @@ export default function AboutPage() {
               viewport={{ once: true }}
               transition={{ duration: 0.8, ease: "easeOut" as const }}
             >
-              <span className="font-heading text-[10rem] font-black leading-none text-neon-green/10 select-none sm:text-[14rem]">
+              <motion.span
+                initial={{ opacity: 0, scale: 0.5, rotate: -12 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+                className="inline-block font-heading text-[10rem] font-black leading-none text-neon-green/10 select-none sm:text-[14rem]"
+              >
                 &ldquo;
-              </span>
+              </motion.span>
               <h2 className="-mt-24 font-heading text-4xl font-extrabold leading-tight tracking-tight sm:-mt-32 sm:text-5xl md:text-6xl">
                 A board.
                 <br />
@@ -136,41 +187,49 @@ export default function AboutPage() {
               </h2>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, x: 40 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" as const }}
-              className="flex flex-col justify-center space-y-8"
-            >
+            <div className="flex flex-col justify-center space-y-8">
               {[
                 "Post a ride, a delivery, an errand, or a job.",
                 "Anyone heading that direction picks it up.",
                 "No fleet. No algorithms deciding your fare.",
                 "Just people who know these roads helping each other move.",
               ].map((line, i) => (
-                <p
+                <motion.p
                   key={i}
+                  initial={{ opacity: 0, x: 60, filter: "blur(8px)" }}
+                  whileInView={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.7, delay: 0.15 * i, ease: "easeOut" as const }}
                   className="text-xl leading-relaxed text-white/60 sm:text-2xl"
                 >
                   {line}
-                </p>
+                </motion.p>
               ))}
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ─── Stats strip ─── */}
-      <section className="border-y border-border/50 bg-background py-20">
+      <section className="border-y border-border/50 bg-background py-20 overflow-hidden">
         <div className="mx-auto grid max-w-5xl grid-cols-2 gap-10 px-4 text-center sm:px-6 lg:grid-cols-4">
           {[
             { to: 6, suffix: "", label: "Districts" },
             { to: 400, suffix: "K+", label: "Population" },
             { to: 0, suffix: "", label: "Ride-share apps" },
             { to: 1, suffix: "", label: "kanek" },
-          ].map((stat) => (
-            <div key={stat.label}>
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 40, scale: 0.8 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{
+                duration: 0.6,
+                delay: 0.12 * i,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+            >
               <AnimatedCounter
                 to={stat.to}
                 suffix={stat.suffix}
@@ -179,7 +238,7 @@ export default function AboutPage() {
               <p className="mt-2 text-sm tracking-wide text-muted-foreground">
                 {stat.label}
               </p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
@@ -201,19 +260,19 @@ export default function AboutPage() {
             {/* Beat 1 */}
             <div className="grid gap-8 lg:grid-cols-[1fr_2fr] lg:gap-16">
               <motion.span
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.5, rotate: -8 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                 className="self-start font-heading text-[8rem] font-black leading-none text-accent-green/10 sm:text-[10rem]"
               >
                 01
               </motion.span>
               <motion.div
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 40, filter: "blur(10px)" }}
+                whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.7 }}
+                transition={{ duration: 0.8, delay: 0.15 }}
                 className="self-center"
               >
                 <h3 className="font-heading text-3xl font-bold sm:text-4xl">
@@ -232,10 +291,10 @@ export default function AboutPage() {
             {/* Beat 2 */}
             <div className="grid gap-8 lg:grid-cols-[2fr_1fr] lg:gap-16">
               <motion.div
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 40, filter: "blur(10px)" }}
+                whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.7 }}
+                transition={{ duration: 0.8, delay: 0.15 }}
                 className="self-center"
               >
                 <h3 className="font-heading text-3xl font-bold sm:text-4xl">
@@ -249,10 +308,10 @@ export default function AboutPage() {
                 </p>
               </motion.div>
               <motion.span
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.5, rotate: 8 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                 className="self-start text-right font-heading text-[8rem] font-black leading-none text-accent-green/10 sm:text-[10rem]"
               >
                 02
@@ -262,19 +321,19 @@ export default function AboutPage() {
             {/* Beat 3 */}
             <div className="grid gap-8 lg:grid-cols-[1fr_2fr] lg:gap-16">
               <motion.span
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.5, rotate: -8 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                 className="self-start font-heading text-[8rem] font-black leading-none text-accent-green/10 sm:text-[10rem]"
               >
                 03
               </motion.span>
               <motion.div
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 40, filter: "blur(10px)" }}
+                whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.7 }}
+                transition={{ duration: 0.8, delay: 0.15 }}
                 className="self-center"
               >
                 <h3 className="font-heading text-3xl font-bold sm:text-4xl">
@@ -327,15 +386,22 @@ export default function AboutPage() {
             ].map((belief, i) => (
               <motion.div
                 key={belief.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: i * 0.1 }}
-                className="bg-forest-900 p-10 sm:p-14"
+                transition={{ duration: 0.6, delay: i * 0.12, ease: [0.22, 1, 0.36, 1] }}
+                whileHover={{ scale: 1.03, backgroundColor: "rgba(101,246,123,0.06)" }}
+                className="bg-forest-900 p-10 sm:p-14 transition-colors duration-300 cursor-default"
               >
-                <h3 className="font-heading text-2xl font-bold sm:text-3xl">
+                <motion.h3
+                  initial={{ opacity: 0, x: -20 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: i * 0.12 + 0.2 }}
+                  className="font-heading text-2xl font-bold sm:text-3xl"
+                >
                   {belief.title}
-                </h3>
+                </motion.h3>
                 <p className="mt-4 text-lg leading-relaxed text-white/50">
                   {belief.text}
                 </p>
@@ -348,12 +414,21 @@ export default function AboutPage() {
       {/* ─── Closing CTA ─── */}
       <section className="relative overflow-hidden py-32 sm:py-44">
         <AuroraBlobs />
+        {/* pulsing glow ring */}
+        <motion.div
+          animate={{
+            scale: [1, 1.15, 1],
+            opacity: [0.15, 0.3, 0.15],
+          }}
+          transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" as const }}
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full border border-accent-green/20 blur-sm"
+        />
         <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
           <motion.h2
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, scale: 0.9, filter: "blur(12px)" }}
+            whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             viewport={{ once: true }}
-            transition={{ duration: 0.8, ease: "easeOut" as const }}
+            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
             className="font-heading text-5xl font-black tracking-tight sm:text-6xl md:text-7xl"
           >
             Built for Belize.
@@ -390,6 +465,6 @@ export default function AboutPage() {
           </motion.div>
         </div>
       </section>
-    </>
+    </div>
   );
 }

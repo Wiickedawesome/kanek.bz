@@ -68,7 +68,7 @@ const roles = [
 
 export default function JoinPage() {
   return (
-    <>
+    <div>
       {/* ─── Hero — rallying cry ─── */}
       <section className="relative overflow-hidden py-32 sm:py-44">
         <div className="pointer-events-none absolute -top-40 left-1/4 h-[600px] w-[600px] rounded-full bg-neon-green/6 blur-[140px]" />
@@ -321,6 +321,6 @@ export default function JoinPage() {
           </motion.div>
         </div>
       </section>
-    </>
+    </div>
   );
 }

@@ -51,7 +51,7 @@ export default function RootLayout({
       className={`${workSans.variable} ${manrope.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider>
           <Header />
           <main className="flex-1">{children}</main>

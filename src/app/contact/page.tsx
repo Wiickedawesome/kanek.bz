@@ -77,7 +77,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 export default function ContactPage() {
   return (
-    <>
+    <div>
       {/* ─── Hero — dramatic ─── */}
       <section className="relative overflow-hidden py-32 sm:py-44">
         <div className="pointer-events-none absolute -top-32 right-1/4 h-[500px] w-[500px] rounded-full bg-accent-blue/6 blur-[140px]" />
@@ -250,6 +250,6 @@ export default function ContactPage() {
           </motion.div>
         </div>
       </section>
-    </>
+    </div>
   );
 }
