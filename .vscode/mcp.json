@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "21st-dev": {
+      "command": "/home/wicked/.nvm/versions/node/v22.22.2/bin/npx",
+      "args": ["-y", "@21st-dev/magic@latest"],
+      "env": {
+        "TWENTY_FIRST_API_KEY": "an_sk_d42f210a846fc3a25abc079d967bc8774ed7483dbf87c1ec43eee28b396fb0a2",
+        "PATH": "/home/wicked/.nvm/versions/node/v22.22.2/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
