@@ -372,6 +372,9 @@ export function ParticleTextEffect({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Respect user's motion preference
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * (window.devicePixelRatio > 1 ? 1.5 : 1);
@@ -381,7 +384,10 @@ export function ParticleTextEffect({
 
     resize();
     window.addEventListener("resize", resize);
-    animate();
+
+    if (!prefersReducedMotion) {
+      animate();
+    }
 
     return () => {
       window.removeEventListener("resize", resize);
@@ -395,6 +401,8 @@ export function ParticleTextEffect({
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="Animated particle text effect"
       className={`block ${className}`}
       style={{ width: "100%", height: "100%" }}
     />

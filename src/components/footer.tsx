@@ -64,9 +64,9 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a href="https://admin.kanek.bz" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
+                <Link href="/admin/login" className="hover:text-foreground transition-colors">
                   Admin
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

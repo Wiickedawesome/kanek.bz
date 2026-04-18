@@ -100,6 +100,7 @@ export default function Home() {
           style={{ opacity: heroOpacity, scale: heroScale }}
           className="relative flex min-h-screen flex-col items-center justify-end px-4 pb-28"
         >
+          <h1 className="sr-only">kanek — Community Mobility Board for Belize</h1>
           {/* Tagline below particles */}
           <motion.p
             initial={{ opacity: 0, y: 20 }}
