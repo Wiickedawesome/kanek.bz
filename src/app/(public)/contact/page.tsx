@@ -134,8 +134,8 @@ export default function ContactPage() {
             {
               icon: MessageSquare,
               label: "Support",
-              value: "support@kanek.bz",
-              href: "mailto:support@kanek.bz",
+              value: "support@belizechain.org",
+              href: "mailto:support@belizechain.org",
               desc: "Need help with the app? Report a bug or get assistance.",
             },
             {

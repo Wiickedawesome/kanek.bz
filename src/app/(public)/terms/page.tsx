@@ -2,97 +2,98 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
-  description: "kanek terms of service — the rules for using our community mobility platform.",
+  description: "kanek terms of service — the rules for using our community mobility board.",
 };
 
 const sections = [
   {
     num: "01",
-    title: "Acceptance of Terms",
+    title: "What Kanek Is",
     body: (
       <p>
-        By downloading, installing, or using the kanek mobile application
-        (&ldquo;the App&rdquo;), you agree to be bound by these Terms of
-        Service. If you do not agree, do not use the App.
+        kanek is a community mobility board for Belize. Users can post and
+        discover rides, routes, errands, deliveries, and jobs. kanek is a
+        platform, not a carrier, employer, dispatch service, broker, or
+        ride-hailing company. We do not assign drivers, guarantee availability,
+        or control the real-world conduct of users.
       </p>
     ),
   },
   {
     num: "02",
-    title: "Description of Service",
+    title: "Eligibility and Verification",
     body: (
       <p>
-        kanek is a community mobility board that allows users in Belize to post
-        and accept rides, package deliveries, errands, and jobs. kanek is a
-        platform — we do not provide transportation or delivery services
-        directly.
+        You must be at least 18 years old and legally able to enter binding
+        agreements to use kanek. By using the app or site, you represent that
+        the information you provide is accurate and current. Driver-facing
+        features may require ID review, driver documents, vehicle information,
+        and other trust-and-safety checks.
       </p>
     ),
   },
   {
     num: "03",
-    title: "Eligibility",
+    title: "Account Responsibilities",
     body: (
-      <p>
-        You must be at least 18 years old and legally able to enter into
-        agreements to use kanek. By using the App, you represent and warrant
-        that you meet these requirements.
-      </p>
-    ),
-  },
-  {
-    num: "04",
-    title: "User Accounts",
-    body: (
-      <ul className="space-y-2">
+      <ul className="space-y-3">
         <li className="flex gap-3">
           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-          <span>You are responsible for maintaining the security of your account.</span>
+          <span>Keep your profile, payment, and contact information accurate.</span>
         </li>
         <li className="flex gap-3">
           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-          <span>You agree to provide accurate and complete information.</span>
+          <span>Keep your phone number current because it is part of account access and verification.</span>
         </li>
         <li className="flex gap-3">
           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-          <span>You may not create multiple accounts or impersonate others.</span>
+          <span>Protect your device and account credentials.</span>
         </li>
         <li className="flex gap-3">
           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-          <span>
-            We reserve the right to suspend or terminate accounts that violate
-            these terms.
-          </span>
+          <span>Do not share your account or allow someone else to use it.</span>
         </li>
       </ul>
     ),
   },
   {
+    num: "04",
+    title: "Posts, Bookings, and Messages",
+    body: (
+      <p>
+        You are responsible for keeping your posts, pricing, routing,
+        availability, and communications truthful and up to date. Messages,
+        live tracking, check-ins, and ratings exist to help users coordinate,
+        but they do not make kanek a party to the underlying real-world
+        arrangement.
+      </p>
+    ),
+  },
+  {
     num: "05",
-    title: "User Conduct",
+    title: "Payments and Fees",
     body: (
       <>
-        <p className="mb-3">You agree not to:</p>
-        <ul className="space-y-2">
+        <p className="mb-3">
+          kanek supports cash transactions and, where offered, E-Kyash digital
+          payments in Belizean Dollars (BZD).
+        </p>
+        <ul className="space-y-3">
           <li className="flex gap-3">
             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-            <span>Use the App for any unlawful purpose.</span>
+            <span>A 3% platform fee applies to E-Kyash transactions.</span>
           </li>
           <li className="flex gap-3">
             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-            <span>Harass, threaten, or discriminate against other users.</span>
+            <span>Optional community donations may also be added.</span>
           </li>
           <li className="flex gap-3">
             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-            <span>Post false, misleading, or fraudulent content.</span>
+            <span>Receipts, refunds, and transaction-status records may be created and stored.</span>
           </li>
           <li className="flex gap-3">
             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-            <span>Attempt to access other users&apos; accounts or data.</span>
-          </li>
-          <li className="flex gap-3">
-            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-            <span>Interfere with the operation of the App.</span>
+            <span>Cash arrangements remain the responsibility of the users involved.</span>
           </li>
         </ul>
       </>
@@ -100,68 +101,129 @@ const sections = [
   },
   {
     num: "06",
-    title: "Community Transactions",
+    title: "Safety, Tracking, and SOS",
     body: (
       <p>
-        All arrangements made through kanek (rides, deliveries, errands, jobs)
-        are between the participating users. kanek is not a party to these
-        transactions and is not responsible for the quality, safety, or legality
-        of the services exchanged.
+        kanek includes live tracking, selfie check-ins, ratings, reporting
+        tools, and an SOS feature to support safer coordination. These features
+        are assistance tools only. They do not guarantee identity, conduct,
+        punctuality, performance, or emergency response. You remain responsible
+        for using judgment, verifying details, and contacting local emergency
+        services when necessary.
       </p>
     ),
   },
   {
     num: "07",
-    title: "Limitation of Liability",
+    title: "Prohibited Conduct",
     body: (
-      <p>
-        To the fullest extent permitted by law, kanek shall not be liable for
-        any indirect, incidental, special, consequential, or punitive damages
-        arising out of or related to your use of the App.
-      </p>
+      <ul className="space-y-3">
+        <li className="flex gap-3">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
+          <span>Do not post false, misleading, illegal, or fraudulent content.</span>
+        </li>
+        <li className="flex gap-3">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
+          <span>Do not harass, threaten, exploit, or discriminate against others.</span>
+        </li>
+        <li className="flex gap-3">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
+          <span>Do not misuse messaging, ratings, flags, check-ins, or safety tools.</span>
+        </li>
+        <li className="flex gap-3">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
+          <span>Do not create fake or duplicate accounts, scrape the platform, or interfere with the service.</span>
+        </li>
+      </ul>
     ),
   },
   {
     num: "08",
-    title: "Intellectual Property",
+    title: "Ratings, Flags, and Strikes",
     body: (
       <p>
-        The kanek name, logo, and all content within the App are the property
-        of kanek and are protected by applicable intellectual property laws.
+        kanek may allow users to rate one another, report content, and flag
+        misconduct. We may investigate reports and apply warnings, soft
+        strikes, hard strikes, restrictions, suspensions, or removals. Abuse of
+        the rating or flagging system is itself a violation of these Terms.
       </p>
     ),
   },
   {
     num: "09",
-    title: "Modifications",
+    title: "Content and Intellectual Property",
     body: (
       <p>
-        We reserve the right to modify these terms at any time. Continued use
-        of the App after changes constitutes acceptance of the updated terms.
+        You keep ownership of content you submit, but you grant kanek a
+        non-exclusive license to host, display, store, moderate, and distribute
+        that content inside the product and related service surfaces. kanek and
+        its branding, software, and original materials remain our property or
+        the property of our licensors.
       </p>
     ),
   },
   {
     num: "10",
-    title: "Governing Law",
+    title: "Limitation of Liability",
     body: (
       <p>
-        These terms shall be governed by and construed in accordance with the
-        laws of Belize.
+        kanek is provided on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo;
+        basis. To the maximum extent permitted by law, we disclaim warranties
+        and are not liable for user conduct, off-platform agreements, failed or
+        delayed payments, inaccurate listings, lost opportunities, service
+        interruptions, or indirect, incidental, special, consequential, or
+        punitive damages arising from your use of the platform.
       </p>
     ),
   },
   {
     num: "11",
+    title: "Termination and Account Deletion",
+    body: (
+      <p>
+        You may stop using kanek at any time and may request account deletion
+        through the tools we provide. We may suspend, limit, or terminate
+        access where we believe it is necessary for safety, fraud prevention,
+        legal compliance, or Terms enforcement. Some data may remain in backup,
+        audit, payment, or safety systems for the retention periods described
+        in our Privacy Policy.
+      </p>
+    ),
+  },
+  {
+    num: "12",
+    title: "Governing Law",
+    body: (
+      <p>
+        These Terms are governed by the laws of Belize. Any dispute arising
+        from these Terms or your use of kanek will be handled in the courts of
+        Belize unless applicable law requires otherwise.
+      </p>
+    ),
+  },
+  {
+    num: "13",
+    title: "Changes to These Terms",
+    body: (
+      <p>
+        We may update these Terms from time to time. When we do, we may revise
+        the last-updated date and provide notice in the app or on the site when
+        appropriate. Continued use of kanek after the updated Terms take effect
+        means you accept the revised Terms.
+      </p>
+    ),
+  },
+  {
+    num: "14",
     title: "Contact",
     body: (
       <p>
         For questions about these terms, contact us at{" "}
         <a
-          href="mailto:support@kanek.bz"
+          href="mailto:support@belizechain.org"
           className="font-medium text-accent-green underline underline-offset-4 hover:text-accent-green/80 transition-colors"
         >
-          support@kanek.bz
+          support@belizechain.org
         </a>
         .
       </p>
@@ -185,12 +247,13 @@ export default function TermsPage() {
             Terms of Service
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
-            Plain-language rules for using kanek. No surprises, no
-            buried clauses — just fair terms for our community.
+            The real operating rules for kanek as it exists today. Clear limits,
+            fair expectations, and no pretending we do more than the board
+            actually does.
           </p>
           <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-green" />
-            Last updated: April 12, 2026
+            Last updated: April 23, 2026
           </div>
         </div>
       </section>
@@ -227,7 +290,7 @@ export default function TermsPage() {
           <p className="text-sm text-muted-foreground">
             Questions about these terms?{" "}
             <a
-              href="mailto:support@kanek.bz"
+              href="mailto:support@belizechain.org"
               className="font-medium text-accent-green underline underline-offset-4 hover:text-accent-green/80 transition-colors"
             >
               Get in touch
