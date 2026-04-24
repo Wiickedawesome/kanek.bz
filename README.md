@@ -7,7 +7,7 @@ Official website for **kanek** — a community mobility board for Belize.
 - Next.js 16 (App Router, static export)
 - Tailwind CSS v4 + shadcn/ui
 - Framer Motion
-- Deployed to GitHub Pages
+- Firebase Hosting
 
 ## Development
 
@@ -42,22 +42,36 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Build & Deploy
 
-Push to `main` — GitHub Actions builds and deploys to GitHub Pages automatically.
+The site statically exports to `out/` and deploys to Firebase Hosting on project `kanek-bz`.
 
-The GitHub Pages workflow expects these repository secrets:
+Push to `main` to deploy automatically via GitHub Actions after the required secrets are set.
+
+Required GitHub repository secrets:
 
 ```bash
+FIREBASE_SERVICE_ACCOUNT_KANEK_BZ
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 ```
 
-With GitHub CLI:
+The easiest way to create the Firebase service-account secret is:
 
 ```bash
-gh secret set NEXT_PUBLIC_SUPABASE_URL --repo Wiickedawesome/kanek.bz
-gh secret set NEXT_PUBLIC_SUPABASE_ANON_KEY --repo Wiickedawesome/kanek.bz
+npx firebase-tools init hosting:github
 ```
 
+Manual deploy remains available:
+
 ```bash
-npm run build   # outputs to ./out
+npm run build
+npx firebase-tools deploy --only hosting
+```
+
+The app still reads from Supabase via the public env values in `.env.local`.
+
+Required values:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
 ```

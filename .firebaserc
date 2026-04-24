@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "kanek-bz"
+  },
+  "targets": {
+    "kanek-bz": {
+      "hosting": {
+        "default": [
+          "kanek-bz"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
