@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  getAdminActionErrorMessage,
+  getAdminCommunityData,
+} from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
 
 type RoadReport = {
@@ -51,36 +54,28 @@ export default function CommunityPage() {
   const [selectedReport, setSelectedReport] = useState<RoadReport | null>(null);
   const [selectedGas, setSelectedGas] = useState<GasPrice | null>(null);
   const [selectedWaitlist, setSelectedWaitlist] = useState<WaitlistEntry | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [r, g, w] = await Promise.all([
-      supabase
-        .from("road_reports")
-        .select("id, reporter_id, type, lat, lng, description, upvotes, expires_at, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("gas_prices")
-        .select("id, reporter_id, station_name, station_lat, station_lng, regular_cents, premium_cents, diesel_cents, verified_count, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("waitlist")
-        .select("id, post_id, user_id, notified, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-    ]);
-    setReports((r.data as RoadReport[]) ?? []);
-    setGas((g.data as GasPrice[]) ?? []);
-    setWaitlist((w.data as WaitlistEntry[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminCommunityData<RoadReport, GasPrice, WaitlistEntry>();
+      setReports(data.reports);
+      setGas(data.gas);
+      setWaitlist(data.waitlist);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setReports([]);
+      setGas([]);
+      setWaitlist([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-     
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
-    load();
+    void load();
   }, [load]);
 
   const allUserIds = useMemo(() => [
@@ -112,6 +107,11 @@ export default function CommunityPage() {
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
       {/* Summary */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border p-3">

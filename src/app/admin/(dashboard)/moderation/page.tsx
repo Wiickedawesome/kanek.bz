@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  getAdminModerationData,
+  getAdminActionErrorMessage,
+  isAdminBackendConfigured,
+  issueAdminStrike,
+  reviewAdminFlag,
+} from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
 
 type Flag = {
@@ -47,35 +53,29 @@ export default function ModerationPage() {
   const [selectedStrike, setSelectedStrike] = useState<Strike | null>(null);
   const [selectedAction, setSelectedAction] = useState<AdminAction | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const adminOpsEnabled = isAdminBackendConfigured();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [f, s, a] = await Promise.all([
-      supabase
-        .from("flags")
-        .select("id, reporter_id, target_type, target_id, reason, status, reviewed_by, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("strikes")
-        .select("id, user_id, contract_id, type, reason, auto_generated, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("admin_actions")
-        .select("id, admin_id, action, target_type, target_id, reason, created_at")
-        .order("created_at", { ascending: false })
-        .limit(100),
-    ]);
-    setFlags((f.data as Flag[]) ?? []);
-    setStrikes((s.data as Strike[]) ?? []);
-    setActions((a.data as AdminAction[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminModerationData<Flag, Strike, AdminAction>();
+      setFlags(data.flags);
+      setStrikes(data.strikes);
+      setActions(data.actions);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setFlags([]);
+      setStrikes([]);
+      setActions([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-     
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
     load();
   }, [load]);
 
@@ -92,25 +92,16 @@ export default function ModerationPage() {
     status: "action_taken" | "dismissed"
   ) => {
     if (!confirm(`Mark this flag as "${status === "dismissed" ? "Dismissed" : "Action Taken"}"?`)) return;
+    setActionError(null);
     setActionLoading(flagId);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await supabase
-      .from("flags")
-      .update({ status, reviewed_by: user?.id ?? null })
-      .eq("id", flagId);
-    if (user) {
-      await supabase.from("admin_actions").insert({
-        admin_id: user.id,
-        action: "dismiss_flag",
-        target_type: "flag",
-        target_id: flagId,
-        reason: status === "dismissed" ? "Dismissed" : "Action taken",
-      });
+    try {
+      await reviewAdminFlag(flagId, status);
+      await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
     }
-    await load();
-    setActionLoading(null);
   };
 
   const issueStrike = async () => {
@@ -130,42 +121,16 @@ export default function ModerationPage() {
     if (!reason) return;
     if (!confirm(`Issue ${type} strike to user ${userId}?\n\nReason: ${reason}`)) return;
 
-    await supabase.from("strikes").insert({
-      user_id: userId,
-      type,
-      reason,
-      auto_generated: false,
-    });
-
-    // Update strike count on profile
-    const field = type === "soft" ? "strikes_soft" : "strikes_hard";
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select(field)
-      .eq("id", userId)
-      .single();
-    if (profile) {
-      await supabase
-        .from("profiles")
-        .update({ [field]: ((profile as Record<string, number>)[field] ?? 0) + 1 })
-        .eq("id", userId);
+    setActionError(null);
+    setActionLoading("issue-strike");
+    try {
+      await issueAdminStrike(userId, type, reason);
+      await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
     }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from("admin_actions").insert({
-        admin_id: user.id,
-        action: "issue_strike",
-        target_type: "user",
-        target_id: userId,
-        reason,
-        metadata: { strike_type: type },
-      });
-    }
-
-    await load();
   };
 
   const pendingFlags = flags.filter((f) => f.status === "pending");
@@ -182,6 +147,16 @@ export default function ModerationPage() {
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex gap-1 rounded-lg border p-1">
           {(["flags", "strikes", "actions"] as Tab[]).map((t) => (
@@ -207,9 +182,10 @@ export default function ModerationPage() {
         {tab === "strikes" && (
           <button
             onClick={issueStrike}
+            disabled={!adminOpsEnabled || actionLoading === "issue-strike"}
             className="rounded-md bg-accent-green px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-green/90"
           >
-            Issue Strike
+            {actionLoading === "issue-strike" ? "Issuing…" : "Issue Strike"}
           </button>
         )}
       </div>
@@ -292,14 +268,14 @@ export default function ModerationPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); reviewFlag(f.id, "action_taken"); }}
-                              disabled={actionLoading === f.id}
+                              disabled={!adminOpsEnabled || actionLoading === f.id}
                               className="rounded-md bg-accent-green/10 px-2.5 py-1 text-xs font-medium text-accent-green transition-colors hover:bg-accent-green/20 disabled:opacity-50"
                             >
                               {actionLoading === f.id ? "…" : "Act"}
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); reviewFlag(f.id, "dismissed"); }}
-                              disabled={actionLoading === f.id}
+                              disabled={!adminOpsEnabled || actionLoading === f.id}
                               className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 disabled:opacity-50"
                             >
                               Dismiss

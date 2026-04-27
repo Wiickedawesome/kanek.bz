@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -38,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const syncRequestRef = useRef(0);
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -47,37 +49,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single();
     if (error) {
       console.error("fetchProfile error:", error.message);
+      return null;
     }
-    setProfile(data as Profile | null);
+    return data as Profile | null;
   }, []);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        fetchProfile(s.user.id);
-      }
+  const syncAuthState = useCallback(async (nextSession: Session | null) => {
+    const requestId = ++syncRequestRef.current;
+    const nextUser = nextSession?.user ?? null;
+
+    setLoading(true);
+    setSession(nextSession);
+    setUser(nextUser);
+
+    if (!nextUser) {
+      setProfile(null);
       setLoading(false);
+      return;
+    }
+
+    const nextProfile = await fetchProfile(nextUser.id);
+    if (requestId !== syncRequestRef.current) {
+      return;
+    }
+
+    setProfile(nextProfile);
+    setLoading(false);
+  }, [fetchProfile]);
+
+  useEffect(() => {
+    let active = true;
+
+    void supabase.auth.getSession().then(({ data: { session: s } }) => {
+      if (!active) {
+        return;
+      }
+      void syncAuthState(s);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        fetchProfile(s.user.id);
-      } else {
-        setProfile(null);
+      if (!active) {
+        return;
       }
+      void syncAuthState(s);
     });
 
-    return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+    return () => {
+      active = false;
+      syncRequestRef.current += 1;
+      subscription.unsubscribe();
+    };
+  }, [syncAuthState]);
 
   const sendOtp = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false },
+    });
     if (error) return { error: error.message };
     return { error: null };
   };

@@ -17,6 +17,7 @@
 /.next/
 /out/
 /.firebase/
+/supabase/.temp/
 
 # production
 /build

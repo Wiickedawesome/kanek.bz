@@ -2,61 +2,31 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
-
-type Stats = {
-  totalUsers: number;
-  totalDrivers: number;
-  pendingDriverApprovals: number;
-  activeBookings: number;
-  openPosts: number;
-  pendingFlags: number;
-};
+import {
+  getAdminActionErrorMessage,
+  getAdminDashboardStats,
+  type AdminDashboardStats,
+} from "@/lib/admin-backend";
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
-      const [users, drivers, pendingDrivers, bookings, posts, flags] =
-        await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id", { count: "exact", head: true }),
-          supabase
-            .from("profiles")
-            .select("id", { count: "exact", head: true })
-            .eq("role", "driver"),
-          supabase
-            .from("driver_details")
-            .select("id", { count: "exact", head: true })
-            .eq("review_status", "pending"),
-          supabase
-            .from("bookings")
-            .select("id", { count: "exact", head: true })
-            .in("status", ["pending", "confirmed"]),
-          supabase
-            .from("posts")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "open"),
-          supabase
-            .from("flags")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "pending"),
-        ]);
-
-      setStats({
-        totalUsers: users.count ?? 0,
-        totalDrivers: drivers.count ?? 0,
-        pendingDriverApprovals: pendingDrivers.count ?? 0,
-        activeBookings: bookings.count ?? 0,
-        openPosts: posts.count ?? 0,
-        pendingFlags: flags.count ?? 0,
-      });
-      setLoading(false);
+      setLoadError(null);
+      try {
+        setStats(await getAdminDashboardStats());
+      } catch (error) {
+        setLoadError(getAdminActionErrorMessage(error));
+        setStats(null);
+      } finally {
+        setLoading(false);
+      }
     }
-    load();
+
+    void load();
   }, []);
 
   if (loading) {
@@ -97,6 +67,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
       <h2 className="text-lg font-semibold">Overview</h2>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (

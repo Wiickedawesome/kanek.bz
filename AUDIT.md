@@ -2,8 +2,40 @@
 
 **Date**: April 17, 2026
 **Target**: Full-scale audit of public marketing site + admin dashboard
-**Stack**: Next.js 16.2.3 (static export) · Supabase · Framer Motion · GSAP · GitHub Pages
+**Stack**: Next.js 16.2.3 (static export) · Supabase · Framer Motion · GSAP · Firebase Hosting
 **Scope**: Every file under `src/`, all configuration, dependencies, deployment readiness
+
+> Status note, April 27, 2026: this document started as a pre-launch plan. The live hosting target is now Firebase Hosting, not GitHub Pages, and the latest implementation pass added a fail-closed admin backend contract for mutations and document access.
+
+## April 27, 2026 Findings Snapshot
+
+### Confirmed Changes
+
+- Public marketing routes `/`, `/about`, `/contact`, `/join`, and `/download` were refactored to server-rendered markup to reduce route-level hydration and animation runtime risk.
+- Admin reads, mutations, and document access now run through a fail-closed backend contract configured through `NEXT_PUBLIC_ADMIN_API_BASE_URL`, with a Supabase Edge Function implementation added at `supabase/functions/admin-api/index.ts`.
+- The admin login flow now waits for profile resolution before clearing loading state and disables implicit OTP user creation.
+- The live Supabase function `admin-api` was deployed to project `tlggdherqjvybpddsqjj` on April 27, 2026.
+
+### Confirmed Constraints
+
+- This repo still builds as a static export, so dynamic Next.js route handlers are not the right place for secure admin mutations here.
+- No Supabase SQL migrations, storage policies, or RLS definitions exist in this repo, so a full authorization audit still cannot be completed locally from code alone even though a query checklist now exists at `supabase/sql/rls-audit-queries.sql`.
+- The live database currently has zero `profiles.role = 'admin'` rows, so the deployed admin backend will reject every admin request until an admin profile is created or promoted.
+
+### Live Supabase Audit Findings
+
+- All inspected app-facing public tables currently have RLS enabled.
+- RLS is enabled but not forced on the inspected public tables.
+- The `documents` storage bucket is private.
+- The public-role policies inspected on `profiles`, `posts`, `bookings`, `contract_events`, and `driver_documents` are predicate-constrained by `auth.uid()` or admin checks rather than being blanket-open reads or writes.
+- Stored document references still contain legacy malformed values: 3 of 7 sampled refs include a trailing `:http://localhost...` blob suffix. The deployed Edge Function now strips that suffix before requesting a signed URL.
+
+### Remaining Audit Priorities
+
+- Verify Supabase RLS and storage policies directly in the backend source of truth or Supabase dashboard.
+- Point `NEXT_PUBLIC_ADMIN_API_BASE_URL` at the deployed function URL in each environment and ensure the frontend is rebuilt with that value.
+- Promote at least one production profile to `role = 'admin'` so the backend can authorize real admin sessions.
+- Clean or backfill malformed stored document references so the backend no longer needs to sanitize legacy blob-suffixed paths at read time.
 
 ---
 

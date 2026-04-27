@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  getAdminActionErrorMessage,
+  getAdminFinanceData,
+} from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
 
 type EkyashTx = {
@@ -46,36 +49,28 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [selectedTxn, setSelectedTxn] = useState<EkyashTx | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<EmailReceipt | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [t, r, d] = await Promise.all([
-      supabase
-        .from("ekyash_transactions")
-        .select("id, contract_id, payer_id, payee_id, order_id, amount_cents, platform_fee_cents, donation_cents, currency, status, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("email_receipts")
-        .select("id, user_id, contract_id, email_to, type, status, error, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("donation_totals")
-        .select("total_cents, updated_at")
-        .eq("id", 1)
-        .single(),
-    ]);
-    setTxns((t.data as EkyashTx[]) ?? []);
-    setReceipts((r.data as EmailReceipt[]) ?? []);
-    setDonationTotals(d.data as DonationTotal | null);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminFinanceData<EkyashTx, EmailReceipt, DonationTotal>();
+      setTxns(data.transactions);
+      setReceipts(data.receipts);
+      setDonationTotals(data.donationTotals);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setTxns([]);
+      setReceipts([]);
+      setDonationTotals(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-     
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
-    load();
+    void load();
   }, [load]);
 
   const allUserIds = useMemo(() => [
@@ -104,6 +99,11 @@ export default function FinancePage() {
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border p-3">

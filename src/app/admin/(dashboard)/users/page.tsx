@@ -2,17 +2,17 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const STORAGE_BUCKET = "documents";
-
-/** Resolve a relative storage path to a full Supabase storage public URL */
-function resolveDocUrl(path: string | null): string | null {
-  if (!path) return null;
-  if (path.startsWith("http")) return path;
-  return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
-}
+import {
+  getAdminActionErrorMessage,
+  getAdminUserDetail,
+  getAdminUsersData,
+  isAdminBackendConfigured,
+  resolveAdminDocumentUrl,
+  reviewAdminDriverApplication,
+  reviewAdminDriverDocument,
+  reviewAdminRiderDocument,
+  updateAdminAccountStatus,
+} from "@/lib/admin-backend";
 
 type Profile = {
   id: string;
@@ -96,6 +96,10 @@ function UsersPageInner() {
   const [riderDocs, setRiderDocs] = useState<RiderDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [documentLoading, setDocumentLoading] = useState<string | null>(null);
+  const adminOpsEnabled = isAdminBackendConfigured();
 
   /* ── Detail-view state (loaded when viewUserId is set) ── */
   const [detailProfile, setDetailProfile] = useState<Profile | null>(null);
@@ -108,101 +112,78 @@ function UsersPageInner() {
   /* ── List data loader ── */
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, dd, ddocs, rdocs] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, first_name, last_name, email, phone, role, account_status, rating_avg, strikes_soft, strikes_hard, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("driver_details")
-        .select("id, vehicle_make, vehicle_model, vehicle_year, vehicle_plate, verified, review_status, rejection_reason, license_url, insurance_url, id_document_url"),
-      supabase
-        .from("driver_documents")
-        .select("id, profile_id, document_type, document_url, document_number, expiration_date, review_status, rejection_reason")
-        .eq("review_status", "pending"),
-      supabase
-        .from("rider_documents")
-        .select("id, user_id, document_url, verified, review_status, rejection_reason")
-        .eq("review_status", "pending"),
-    ]);
-    setProfiles((p.data as Profile[]) ?? []);
-    setDriverDetails((dd.data as DriverDetail[]) ?? []);
-    setDriverDocs((ddocs.data as DriverDocument[]) ?? []);
-    setRiderDocs((rdocs.data as RiderDocument[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminUsersData<
+        Profile,
+        DriverDetail,
+        DriverDocument,
+        RiderDocument
+      >();
+      setProfiles(data.profiles);
+      setDriverDetails(data.driverDetails);
+      setDriverDocs(data.driverDocs);
+      setRiderDocs(data.riderDocs);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setProfiles([]);
+      setDriverDetails([]);
+      setDriverDocs([]);
+      setRiderDocs([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   /* ── Detail data loader ── */
   const loadDetail = useCallback(async (uid: string) => {
     setDetailLoading(true);
-    const [p, dd, ddocs, rdocs] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, first_name, last_name, email, phone, role, account_status, rating_avg, strikes_soft, strikes_hard, created_at")
-        .eq("id", uid)
-        .single(),
-      supabase
-        .from("driver_details")
-        .select("id, vehicle_make, vehicle_model, vehicle_year, vehicle_plate, verified, review_status, rejection_reason, license_url, insurance_url, id_document_url")
-        .eq("id", uid)
-        .maybeSingle(),
-      supabase
-        .from("driver_documents")
-        .select("id, profile_id, document_type, document_url, document_number, expiration_date, review_status, rejection_reason")
-        .eq("profile_id", uid),
-      supabase
-        .from("rider_documents")
-        .select("id, user_id, document_url, verified, review_status, rejection_reason")
-        .eq("user_id", uid),
-    ]);
-    setDetailProfile((p.data as Profile) ?? null);
-    setDetailDriver((dd.data as DriverDetail) ?? null);
-    setDetailDriverDocs((ddocs.data as DriverDocument[]) ?? []);
-    setDetailRiderDocs((rdocs.data as RiderDocument[]) ?? []);
-    setDetailLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminUserDetail<
+        Profile,
+        DriverDetail,
+        DriverDocument,
+        RiderDocument
+      >(uid);
+      setDetailProfile(data.profile);
+      setDetailDriver(data.driver);
+      setDetailDriverDocs(data.driverDocs);
+      setDetailRiderDocs(data.riderDocs);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setDetailProfile(null);
+      setDetailDriver(null);
+      setDetailDriverDocs([]);
+      setDetailRiderDocs([]);
+    } finally {
+      setDetailLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- async data fetch on mount */
     if (viewUserId) {
       loadDetail(viewUserId);
     } else {
       load();
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [viewUserId, load, loadDetail]);
 
   /* ── Actions ── */
-  const logAction = async (
-    action: string,
-    targetType: string,
-    targetId: string,
-    reason?: string
-  ) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from("admin_actions").insert({
-      admin_id: user.id,
-      action,
-      target_type: targetType,
-      target_id: targetId,
-      reason: reason ?? null,
-    });
-  };
-
   const updateAccountStatus = async (userId: string, status: string) => {
     const label = status === "suspended" ? "suspend" : "reactivate";
     if (!confirm(`Are you sure you want to ${label} this user?`)) return;
+    setActionError(null);
     setActionLoading("account");
-    await supabase.from("profiles").update({ account_status: status }).eq("id", userId);
-    const action = status === "suspended" ? "suspend_user" : "unsuspend_user";
-    await logAction(action, "user", userId);
-    if (viewUserId) await loadDetail(viewUserId);
-    else await load();
-    setActionLoading(null);
+    try {
+      await updateAdminAccountStatus(userId, status);
+      if (viewUserId) await loadDetail(viewUserId);
+      else await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const reviewDriverDetail = async (
@@ -211,20 +192,17 @@ function UsersPageInner() {
     reason?: string
   ) => {
     if (!confirm(`${status === "approved" ? "Approve" : "Reject"} this driver application?`)) return;
+    setActionError(null);
     setActionLoading("driver");
-    await supabase
-      .from("driver_details")
-      .update({
-        review_status: status,
-        verified: status === "approved",
-        rejection_reason: status === "rejected" ? (reason ?? "Rejected by admin") : null,
-      })
-      .eq("id", driverId);
-    const action = status === "approved" ? "approve_driver" : "reject_driver";
-    await logAction(action, "driver", driverId, reason);
-    if (viewUserId) await loadDetail(viewUserId);
-    else await load();
-    setActionLoading(null);
+    try {
+      await reviewAdminDriverApplication(driverId, status, reason);
+      if (viewUserId) await loadDetail(viewUserId);
+      else await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const reviewDriverDoc = async (
@@ -234,27 +212,17 @@ function UsersPageInner() {
     reason?: string
   ) => {
     if (!confirm(`${status === "approved" ? "Approve" : "Reject"} this driver document?`)) return;
+    setActionError(null);
     setActionLoading(docId);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await supabase
-      .from("driver_documents")
-      .update({
-        review_status: status,
-        rejection_reason: status === "rejected" ? (reason ?? "Rejected by admin") : null,
-        reviewed_by: user?.id ?? null,
-      })
-      .eq("id", docId);
-    await logAction(
-      status === "approved" ? "approve_driver_doc" : "reject_driver_doc",
-      "driver_document",
-      docId,
-      reason
-    );
-    if (viewUserId) await loadDetail(viewUserId);
-    else await load();
-    setActionLoading(null);
+    try {
+      await reviewAdminDriverDocument(docId, profileId, status, reason);
+      if (viewUserId) await loadDetail(viewUserId);
+      else await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const reviewRiderDoc = async (
@@ -264,28 +232,55 @@ function UsersPageInner() {
     reason?: string
   ) => {
     if (!confirm(`${status === "approved" ? "Approve" : "Reject"} this rider document?`)) return;
+    setActionError(null);
     setActionLoading(docId);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await supabase
-      .from("rider_documents")
-      .update({
-        review_status: status,
-        verified: status === "approved",
-        rejection_reason: status === "rejected" ? (reason ?? "Rejected by admin") : null,
-        reviewed_by: user?.id ?? null,
-      })
-      .eq("id", docId);
-    await logAction(
-      status === "approved" ? "approve_rider_doc" : "reject_rider_doc",
-      "rider_document",
-      docId,
-      reason
-    );
-    if (viewUserId) await loadDetail(viewUserId);
-    else await load();
-    setActionLoading(null);
+    try {
+      await reviewAdminRiderDocument(docId, userId, status, reason);
+      if (viewUserId) await loadDetail(viewUserId);
+      else await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const previewDocument = async (documentRef: string | null, key: string) => {
+    if (!documentRef) return;
+
+    setActionError(null);
+    setDocumentLoading(key);
+
+    try {
+      const secureUrl = await resolveAdminDocumentUrl(documentRef);
+      if (!secureUrl) {
+        throw new Error("Document URL could not be resolved.");
+      }
+      setPreviewUrl(secureUrl);
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setDocumentLoading(null);
+    }
+  };
+
+  const openDocument = async (documentRef: string | null, key: string) => {
+    if (!documentRef) return;
+
+    setActionError(null);
+    setDocumentLoading(key);
+
+    try {
+      const secureUrl = await resolveAdminDocumentUrl(documentRef);
+      if (!secureUrl) {
+        throw new Error("Document URL could not be resolved.");
+      }
+      window.open(secureUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setDocumentLoading(null);
+    }
   };
 
   /* ════════════════════════════════════════════════════════
@@ -311,6 +306,11 @@ function UsersPageInner() {
           >
             ← Back to Users
           </button>
+          {actionError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {actionError}
+            </div>
+          )}
           <p className="text-muted-foreground">User not found.</p>
         </div>
       );
@@ -328,6 +328,18 @@ function UsersPageInner() {
         >
           ← Back to Users
         </button>
+
+        {loadError && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {loadError}
+          </div>
+        )}
+
+        {actionError && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {actionError}
+          </div>
+        )}
 
         {/* Profile header */}
         <div className="rounded-lg border bg-card p-6 space-y-4">
@@ -363,6 +375,7 @@ function UsersPageInner() {
               <ActionButton
                 variant="destructive"
                 loading={actionLoading === "account"}
+                disabled={!adminOpsEnabled}
                 onClick={() => updateAccountStatus(detailProfile.id, "suspended")}
               >
                 Suspend User
@@ -371,6 +384,7 @@ function UsersPageInner() {
               <ActionButton
                 variant="default"
                 loading={actionLoading === "account"}
+                disabled={!adminOpsEnabled}
                 onClick={() => updateAccountStatus(detailProfile.id, "active")}
               >
                 Unsuspend User
@@ -405,27 +419,33 @@ function UsersPageInner() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <DocCard
                   label="Driver License"
-                  url={
-                    resolveDocUrl(detailDriver.license_url) ??
-                    resolveDocUrl(detailDriverDocs.find((d) => d.document_type === "drivers_license")?.document_url ?? null)
+                  documentRef={
+                    detailDriver.license_url ??
+                    detailDriverDocs.find((d) => d.document_type === "drivers_license")?.document_url ?? null
                   }
-                  onPreview={setPreviewUrl}
+                  disabled={!adminOpsEnabled}
+                  loading={documentLoading === "driver-license"}
+                  onPreview={(documentRef) => previewDocument(documentRef, "driver-license")}
                 />
                 <DocCard
                   label="Insurance"
-                  url={
-                    resolveDocUrl(detailDriver.insurance_url) ??
-                    resolveDocUrl(detailDriverDocs.find((d) => d.document_type === "vehicle_insurance")?.document_url ?? null)
+                  documentRef={
+                    detailDriver.insurance_url ??
+                    detailDriverDocs.find((d) => d.document_type === "vehicle_insurance")?.document_url ?? null
                   }
-                  onPreview={setPreviewUrl}
+                  disabled={!adminOpsEnabled}
+                  loading={documentLoading === "driver-insurance"}
+                  onPreview={(documentRef) => previewDocument(documentRef, "driver-insurance")}
                 />
                 <DocCard
                   label="ID Document"
-                  url={
-                    resolveDocUrl(detailDriver.id_document_url) ??
-                    resolveDocUrl(detailDriverDocs.find((d) => d.document_type === "vehicle_registration")?.document_url ?? null)
+                  documentRef={
+                    detailDriver.id_document_url ??
+                    detailDriverDocs.find((d) => d.document_type === "vehicle_registration")?.document_url ?? null
                   }
-                  onPreview={setPreviewUrl}
+                  disabled={!adminOpsEnabled}
+                  loading={documentLoading === "driver-id"}
+                  onPreview={(documentRef) => previewDocument(documentRef, "driver-id")}
                 />
               </div>
             </div>
@@ -452,7 +472,7 @@ function UsersPageInner() {
                     <ActionButton
                       variant="default"
                       loading={actionLoading === "driver"}
-                      disabled={!allDocsApproved}
+                      disabled={!adminOpsEnabled || !allDocsApproved}
                       onClick={() => reviewDriverDetail(detailDriver.id, "approved")}
                     >
                       Approve Driver
@@ -460,6 +480,7 @@ function UsersPageInner() {
                     <ActionButton
                       variant="destructive"
                       loading={actionLoading === "driver"}
+                      disabled={!adminOpsEnabled}
                       onClick={() => {
                         const reason = prompt("Rejection reason:");
                         if (reason !== null) reviewDriverDetail(detailDriver.id, "rejected", reason);
@@ -476,6 +497,7 @@ function UsersPageInner() {
                 <ActionButton
                   variant="default"
                   loading={actionLoading === "driver"}
+                  disabled={!adminOpsEnabled}
                   onClick={() => reviewDriverDetail(detailDriver.id, "approved")}
                 >
                   Re-approve Driver
@@ -514,24 +536,25 @@ function UsersPageInner() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setPreviewUrl(resolveDocUrl(doc.document_url))}
-                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium hover:bg-muted/80 transition-colors"
+                      onClick={() => previewDocument(doc.document_url, `driver-doc-${doc.id}`)}
+                      disabled={!adminOpsEnabled || documentLoading === `driver-doc-${doc.id}`}
+                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/80 disabled:opacity-50"
                     >
-                      Preview
+                      {documentLoading === `driver-doc-${doc.id}` ? "Opening…" : "Preview"}
                     </button>
-                    <a
-                      href={resolveDocUrl(doc.document_url) ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-accent-blue hover:underline"
+                    <button
+                      onClick={() => openDocument(doc.document_url, `driver-doc-open-${doc.id}`)}
+                      disabled={!adminOpsEnabled || documentLoading === `driver-doc-open-${doc.id}`}
+                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-accent-blue transition-colors hover:bg-muted/80 disabled:opacity-50"
                     >
-                      Open
-                    </a>
+                      {documentLoading === `driver-doc-open-${doc.id}` ? "Opening…" : "Open"}
+                    </button>
                     {doc.review_status === "pending" && (
                       <>
                         <ActionButton
                           variant="default"
                           loading={actionLoading === doc.id}
+                          disabled={!adminOpsEnabled}
                           onClick={() => reviewDriverDoc(doc.id, doc.profile_id, "approved")}
                         >
                           Approve
@@ -539,6 +562,7 @@ function UsersPageInner() {
                         <ActionButton
                           variant="destructive"
                           loading={actionLoading === doc.id}
+                          disabled={!adminOpsEnabled}
                           onClick={() => {
                             const reason = prompt("Rejection reason:");
                             if (reason !== null)
@@ -575,24 +599,25 @@ function UsersPageInner() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setPreviewUrl(resolveDocUrl(doc.document_url))}
-                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium hover:bg-muted/80 transition-colors"
+                      onClick={() => previewDocument(doc.document_url, `rider-doc-${doc.id}`)}
+                      disabled={!adminOpsEnabled || documentLoading === `rider-doc-${doc.id}`}
+                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/80 disabled:opacity-50"
                     >
-                      Preview
+                      {documentLoading === `rider-doc-${doc.id}` ? "Opening…" : "Preview"}
                     </button>
-                    <a
-                      href={resolveDocUrl(doc.document_url) ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-accent-blue hover:underline"
+                    <button
+                      onClick={() => openDocument(doc.document_url, `rider-doc-open-${doc.id}`)}
+                      disabled={!adminOpsEnabled || documentLoading === `rider-doc-open-${doc.id}`}
+                      className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-accent-blue transition-colors hover:bg-muted/80 disabled:opacity-50"
                     >
-                      Open
-                    </a>
+                      {documentLoading === `rider-doc-open-${doc.id}` ? "Opening…" : "Open"}
+                    </button>
                     {doc.review_status === "pending" && (
                       <>
                         <ActionButton
                           variant="default"
                           loading={actionLoading === doc.id}
+                          disabled={!adminOpsEnabled}
                           onClick={() => reviewRiderDoc(doc.id, doc.user_id, "approved")}
                         >
                           Approve
@@ -600,6 +625,7 @@ function UsersPageInner() {
                         <ActionButton
                           variant="destructive"
                           loading={actionLoading === doc.id}
+                          disabled={!adminOpsEnabled}
                           onClick={() => {
                             const reason = prompt("Rejection reason:");
                             if (reason !== null)
@@ -697,6 +723,16 @@ function UsersPageInner() {
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
       {/* Tabs */}
       <div className="flex gap-1 rounded-lg border p-1">
         {tabs.map((t) => (
@@ -929,14 +965,18 @@ function InfoField({ label, value }: { label: string; value: string }) {
 
 function DocCard({
   label,
-  url,
+  documentRef,
+  disabled,
+  loading,
   onPreview,
 }: {
   label: string;
-  url: string | null;
-  onPreview: (url: string) => void;
+  documentRef: string | null;
+  disabled?: boolean;
+  loading?: boolean;
+  onPreview: (documentRef: string) => void;
 }) {
-  if (!url) {
+  if (!documentRef) {
     return (
       <div className="flex flex-col items-center justify-center rounded-md border border-dashed p-4 text-sm text-muted-foreground">
         <span className="text-xs">{label}</span>
@@ -946,11 +986,14 @@ function DocCard({
   }
   return (
     <button
-      onClick={() => onPreview(url)}
-      className="flex flex-col items-center justify-center rounded-md border p-4 text-sm transition-colors hover:bg-muted/40 cursor-pointer"
+      onClick={() => onPreview(documentRef)}
+      disabled={disabled || loading}
+      className="flex cursor-pointer flex-col items-center justify-center rounded-md border p-4 text-sm transition-colors hover:bg-muted/40 disabled:opacity-50"
     >
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="mt-1 text-xs text-accent-blue">Click to view</span>
+      <span className="mt-1 text-xs text-accent-blue">
+        {loading ? "Opening…" : "Click to view"}
+      </span>
     </button>
   );
 }

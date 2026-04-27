@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  cancelAdminPost,
+  getAdminContentData,
+  getAdminActionErrorMessage,
+  isAdminBackendConfigured,
+} from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
 
 type Post = {
@@ -38,33 +43,29 @@ export default function ContentPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const adminOpsEnabled = isAdminBackendConfigured();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, n] = await Promise.all([
-      supabase
-        .from("posts")
-        .select(
-          "id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_filled, created_at"
-        )
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("notifications")
-        .select("id, user_id, type, title, body, read, created_at")
-        .order("created_at", { ascending: false })
-        .limit(100),
-    ]);
-    setPosts((p.data as Post[]) ?? []);
-    setNotifications((n.data as Notification[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminContentData<Post, Notification>();
+      setPosts(data.posts);
+      setNotifications(data.notifications);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setPosts([]);
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-     
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
     load();
   }, [load]);
 
@@ -76,22 +77,16 @@ export default function ContentPage() {
 
   const removePost = async (postId: string) => {
     if (!confirm("Remove this post? This will mark it as cancelled.")) return;
+    setActionError(null);
     setActionLoading(postId);
-    await supabase.from("posts").update({ status: "cancelled" }).eq("id", postId);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from("admin_actions").insert({
-        admin_id: user.id,
-        action: "remove_post",
-        target_type: "post",
-        target_id: postId,
-        reason: "Removed by admin",
-      });
+    try {
+      await cancelAdminPost(postId);
+      await load();
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setActionLoading(null);
     }
-    await load();
-    setActionLoading(null);
   };
 
   const formatCents = (cents: number | null) =>
@@ -112,6 +107,16 @@ export default function ContentPage() {
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
       <div className="flex gap-1 rounded-lg border p-1">
         {(["posts", "notifications"] as Tab[]).map((t) => (
           <button
@@ -165,7 +170,7 @@ export default function ContentPage() {
                     <div className="pt-2 border-t">
                       <button
                         onClick={(e) => { e.stopPropagation(); removePost(selectedPost.id); }}
-                        disabled={actionLoading === selectedPost.id}
+                        disabled={!adminOpsEnabled || actionLoading === selectedPost.id}
                         className="rounded-md bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
                       >
                         {actionLoading === selectedPost.id ? "…" : "Remove Post"}
@@ -226,7 +231,7 @@ export default function ContentPage() {
                         {p.status !== "cancelled" && (
                           <button
                             onClick={(e) => { e.stopPropagation(); removePost(p.id); }}
-                            disabled={actionLoading === p.id}
+                            disabled={!adminOpsEnabled || actionLoading === p.id}
                             className="rounded-md bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
                           >
                             {actionLoading === p.id ? "…" : "Remove"}

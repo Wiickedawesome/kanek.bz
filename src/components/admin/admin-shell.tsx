@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import { AdminGuard } from "@/components/admin/admin-guard";
 import { useAuth } from "@/components/admin/auth-provider";
 import {
+  getAdminBackendStatusMessage,
+  isAdminBackendConfigured,
+} from "@/lib/admin-backend";
+import {
   LayoutDashboard,
   Users,
   CalendarCheck,
@@ -31,6 +35,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { signOut, profile } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const adminBackendConfigured = isAdminBackendConfigured();
 
   const isActive = (href: string) =>
     href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
@@ -110,7 +115,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </header>
 
           {/* Page content */}
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+            {!adminBackendConfigured && (
+              <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-200">
+                {getAdminBackendStatusMessage()}
+              </div>
+            )}
+            {children}
+          </main>
         </div>
       </div>
     </AdminGuard>

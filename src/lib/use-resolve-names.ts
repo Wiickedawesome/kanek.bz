@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/lib/supabase";
+import { resolveAdminNames } from "@/lib/admin-backend";
 
 type NameMap = Record<string, string>;
 
@@ -28,43 +28,22 @@ export function useResolveNames(
     let cancelled = false;
     async function resolve() {
       setLoading(true);
-      const results: [NameMap, NameMap] = [{}, {}];
-
-      // Resolve users in batches of 50 (Supabase .in() limit)
-      for (let i = 0; i < uniqueUsers.length; i += 50) {
-        const batch = uniqueUsers.slice(i, i + 50);
-        const { data } = await supabase
-          .from("profiles")
-          .select("id, full_name, email")
-          .in("id", batch);
-        if (data) {
-          for (const p of data) {
-            results[0][p.id] = p.full_name || p.email || p.id.slice(0, 8);
-          }
+      try {
+        const results = await resolveAdminNames(uniqueUsers, uniquePosts);
+        if (!cancelled) {
+          setUsers(results.users);
+          setPosts(results.posts);
         }
-      }
-
-      // Resolve posts in batches of 50
-      for (let i = 0; i < uniquePosts.length; i += 50) {
-        const batch = uniquePosts.slice(i, i + 50);
-        const { data } = await supabase
-          .from("posts")
-          .select("id, title")
-          .in("id", batch);
-        if (data) {
-          for (const p of data) {
-            results[1][p.id] = p.title || p.id.slice(0, 8);
-          }
+      } catch (error) {
+        console.error("resolveAdminNames error:", error);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
         }
-      }
-
-      if (!cancelled) {
-        setUsers(results[0]);
-        setPosts(results[1]);
-        setLoading(false);
       }
     }
-    resolve();
+
+    void resolve();
     return () => { cancelled = true; };
   }, [userIds, postIds]);
 

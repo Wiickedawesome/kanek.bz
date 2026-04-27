@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  getAdminActionErrorMessage,
+  getAdminBookingsData,
+  getAdminContractEvents,
+} from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
 
 type Booking = {
@@ -46,39 +50,36 @@ export default function BookingsPage() {
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [bookingContracts, setBookingContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [b, c] = await Promise.all([
-      supabase
-        .from("bookings")
-        .select("id, post_id, user_id, role, status, seats_booked, payment_method, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("contracts")
-        .select("id, post_id, booking_id, origin_address, dest_address, agreed_price_cents, status, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200),
-    ]);
-    setBookings((b.data as Booking[]) ?? []);
-    setContracts((c.data as Contract[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await getAdminBookingsData<Booking, Contract>();
+      setBookings(data.bookings);
+      setContracts(data.contracts);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setBookings([]);
+      setContracts([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-     
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
-    load();
+    void load();
   }, [load]);
 
   const loadContractEvents = async (contractId: string) => {
-    const { data } = await supabase
-      .from("contract_events")
-      .select("id, contract_id, actor_id, event_type, note, created_at")
-      .eq("contract_id", contractId)
-      .order("created_at", { ascending: true });
-    setContractEvents((data as ContractEvent[]) ?? []);
+    try {
+      const data = await getAdminContractEvents<ContractEvent>(contractId);
+      setContractEvents(data.events);
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setContractEvents([]);
+    }
   };
 
   const allUserIds = useMemo(() => [
@@ -110,6 +111,11 @@ export default function BookingsPage() {
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
       <div className="flex gap-1 rounded-lg border p-1">
         {(["bookings", "contracts"] as Tab[]).map((t) => (
           <button
