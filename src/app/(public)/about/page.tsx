@@ -37,7 +37,7 @@ const beliefs = [
   },
   {
     title: "No middleman",
-    text: "Drivers and riders connect directly. No corporate cut. No surge. The price is between you and your neighbor.",
+    text: "Drivers and riders connect directly. No surge. When E-Kyash is used, the 3% fee helps run kanek and support the community.",
   },
 ];
 

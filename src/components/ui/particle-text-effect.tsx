@@ -163,8 +163,8 @@ const KANEK_COLORS_DARK = [
   { r: 81, g: 193, b: 82 },   // accent-green #51c152
   { r: 101, g: 246, b: 123 }, // neon-green #65f67b
   { r: 73, g: 103, b: 246 },  // accent-blue #4967f6
-  { r: 58, g: 90, b: 28 },    // forest-500 #3a5a1c
-  { r: 16, g: 185, b: 129 },  // emerald
+  { r: 132, g: 214, b: 96 },  // brighter leaf for ERRANDS
+  { r: 72, g: 214, b: 176 },  // brighter jade for JOBS
 ];
 
 // Richer/deeper colors for light backgrounds
@@ -192,13 +192,15 @@ export function ParticleTextEffect({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
-  const frameCountRef = useRef(0);
   const wordIndexRef = useRef(0);
+  const lastWordChangeTimeRef = useRef<number | null>(null);
   const themeRef = useRef(theme);
   themeRef.current = theme;
 
   const pixelSteps = 6;
   const drawAsPoints = true;
+  const INITIAL_WORD_HOLD_MS = 6000;
+  const WORD_HOLD_MS = 4000;
 
   const generateRandomPos = (
     x: number,
@@ -235,7 +237,17 @@ export function ParticleTextEffect({
     const offscreenCtx = offscreenCanvas.getContext("2d")!;
 
     offscreenCtx.fillStyle = "white";
-    const fontSize = Math.min(canvas.width * 0.12, 180);
+    const baseFontSize = Math.min(canvas.width * 0.12, 180);
+    let fontSize = baseFontSize;
+    offscreenCtx.font = `bold ${fontSize}px Arial`;
+    const targetWordWidth = canvas.width * 0.32;
+    const measuredWidth = offscreenCtx.measureText(word).width;
+    if (measuredWidth > 0 && measuredWidth < targetWordWidth) {
+      fontSize = Math.min(
+        baseFontSize * (targetWordWidth / measuredWidth),
+        Math.min(canvas.width * 0.16, 240)
+      );
+    }
     offscreenCtx.font = `bold ${fontSize}px Arial`;
     offscreenCtx.textAlign = "center";
     offscreenCtx.textBaseline = "middle";
@@ -330,9 +342,13 @@ export function ParticleTextEffect({
     }
   };
 
-  const animate = () => {
+  const animate = (timestamp: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    if (lastWordChangeTimeRef.current === null) {
+      lastWordChangeTimeRef.current = timestamp;
+    }
 
     const ctx = canvas.getContext("2d")!;
     const particles = particlesRef.current;
@@ -359,10 +375,11 @@ export function ParticleTextEffect({
       }
     }
 
-    frameCountRef.current++;
-    if (frameCountRef.current % 240 === 0) {
+    const holdMs = wordIndexRef.current === 0 ? INITIAL_WORD_HOLD_MS : WORD_HOLD_MS;
+    if (timestamp - lastWordChangeTimeRef.current >= holdMs) {
       wordIndexRef.current = (wordIndexRef.current + 1) % words.length;
       nextWord(words[wordIndexRef.current], canvas);
+      lastWordChangeTimeRef.current = timestamp;
     }
 
     animationRef.current = requestAnimationFrame(animate);
@@ -380,13 +397,14 @@ export function ParticleTextEffect({
       canvas.width = rect.width * (window.devicePixelRatio > 1 ? 1.5 : 1);
       canvas.height = rect.height * (window.devicePixelRatio > 1 ? 1.5 : 1);
       nextWord(words[wordIndexRef.current], canvas);
+      lastWordChangeTimeRef.current = null;
     };
 
     resize();
     window.addEventListener("resize", resize);
 
     if (!prefersReducedMotion) {
-      animate();
+      animationRef.current = requestAnimationFrame(animate);
     }
 
     return () => {

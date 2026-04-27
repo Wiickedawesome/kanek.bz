@@ -9,6 +9,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HomeHero } from "@/components/ui/home-hero";
 
 const features = [
   {
@@ -77,59 +78,7 @@ const stats = [
 export default function Home() {
   return (
     <div className="overflow-hidden">
-      <section className="relative min-h-screen overflow-hidden bg-[#f6f6f4] dark:bg-forest-900">
-        <div className="pointer-events-none absolute -top-32 left-1/4 h-125 w-125 rounded-full bg-accent-green/8 blur-[120px]" />
-        <div className="pointer-events-none absolute bottom-0 right-1/4 h-100 w-100 rounded-full bg-accent-blue/8 blur-[100px]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(81,193,82,0.12),transparent_35%)] dark:bg-[radial-gradient(circle_at_50%_35%,rgba(101,246,123,0.12),transparent_35%)]" />
-        <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-4 py-28 sm:px-6">
-          <div className="max-w-4xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-accent-green">
-              Community mobility for Belize
-            </p>
-            <h1 className="mt-8 font-heading text-[clamp(3.5rem,10vw,8rem)] font-black leading-[0.9] tracking-tighter text-foreground dark:text-white">
-              Move better
-              <br />
-              across Belize.
-            </h1>
-            <p className="mt-8 max-w-2xl text-xl leading-relaxed text-foreground/70 dark:text-white/70 sm:text-2xl">
-              kanek is a community board for rides, deliveries, errands, and jobs.
-              People helping people move without surge pricing, dispatch games, or a
-              corporate fleet in the middle.
-            </p>
-          </div>
-
-          <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-            <Button
-              render={<Link href="/download" />}
-              size="lg"
-              className="bg-neon-green px-10 py-6 text-lg font-bold text-forest-900 hover:bg-neon-green/90"
-            >
-              Get the App
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-            <Button
-              render={<Link href="/about" />}
-              variant="outline"
-              size="lg"
-              className="border-forest-900/20 px-10 py-6 text-lg text-forest-900 hover:bg-forest-900/10 dark:border-white/20 dark:text-white dark:hover:bg-white/10"
-            >
-              Learn More
-            </Button>
-          </div>
-
-          <div className="mt-16 grid gap-4 sm:grid-cols-3">
-            {[
-              "Built around the roads Belize already uses.",
-              "Designed for real trips, errands, deliveries, and local work.",
-              "Structured to grow trust instead of hiding behind dispatch logic.",
-            ].map((item) => (
-              <div key={item} className="rounded-3xl border border-border/60 bg-background/70 p-6 backdrop-blur dark:bg-white/5">
-                <p className="text-sm leading-relaxed text-muted-foreground">{item}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <HomeHero />
 
       <section className="relative overflow-hidden bg-background py-28">
         <div className="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-accent-green/8 blur-3xl" />

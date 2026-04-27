@@ -3,7 +3,7 @@ import { Mail, MessageSquare, MapPin, ChevronDown } from "lucide-react";
 const faqs = [
   {
     q: "Is kanek free?",
-    a: "Yes — 100% free to download and use. No subscriptions, no hidden fees.",
+    a: "kanek is free to join, browse, and post. If you use E-Kyash inside the platform, a 3% fee helps run the app and support the community.",
   },
   {
     q: "Where is kanek available?",

@@ -81,7 +81,7 @@ const sections = [
         <ul className="space-y-3">
           <li className="flex gap-3">
             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
-            <span>A 3% platform fee applies to E-Kyash transactions.</span>
+            <span>A 3% platform fee on E-Kyash transactions helps run kanek and support the community.</span>
           </li>
           <li className="flex gap-3">
             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-green" />
@@ -247,13 +247,13 @@ export default function TermsPage() {
             Terms of Service
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
-            The real operating rules for kanek as it exists today. Clear limits,
+            The real operating rules for kanek as it exists. Clear limits,
             fair expectations, and no pretending we do more than the board
             actually does.
           </p>
           <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-green" />
-            Last updated: April 23, 2026
+              Last updated: April 27, 2026
           </div>
         </div>
       </section>

@@ -13,29 +13,30 @@ export default function DownloadPage() {
             Download
           </p>
           <h1 className="mt-8 max-w-4xl font-heading text-[clamp(3rem,8vw,6.5rem)] font-black leading-[0.92] tracking-tighter">
-            kanek is getting ready
+            kanek is live
             <br />
-            for your pocket.
+            in your pocket.
           </h1>
           <p className="mt-8 max-w-2xl text-xl leading-relaxed text-white/70 sm:text-2xl">
-            The app experience is being polished for launch. If you want early access
-            or launch updates, reach out now and we will keep you in the loop.
+            kanek is live across Belize. Find rides, deliveries, errands, and
+            jobs on one community board built for real movement, real trust,
+            and real local use.
           </p>
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row">
             <Button
-              render={<a href="mailto:hello@kanek.bz?subject=kanek%20launch%20updates" />}
+              render={<a href="mailto:hello@kanek.bz?subject=Join%20kanek" />}
               size="lg"
               className="bg-neon-green px-10 py-6 text-lg font-bold text-forest-900 hover:bg-neon-green/90"
             >
-              Get Launch Updates
+              Get kanek
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
             <Button
               render={<Link href="/about" />}
               variant="outline"
               size="lg"
-              className="border-white/20 px-10 py-6 text-lg text-white hover:bg-white/10"
+              className="border-white/30 bg-transparent px-10 py-6 text-lg text-white hover:bg-white/10 hover:text-white"
             >
               Read the Story
             </Button>
@@ -54,12 +55,12 @@ export default function DownloadPage() {
             {
               icon: Shield,
               title: "Trust before hype",
-              text: "Verification, ratings, and moderation matter more than flashy launch theatrics.",
+              text: "Verification, ratings, and moderation matter more than empty theatrics.",
             },
             {
               icon: Users,
-              title: "Community-led rollout",
-              text: "The first release is aimed at real Belizean usage, not vanity metrics or speculative growth.",
+              title: "Community-led platform",
+              text: "Built around real Belizean usage, not vanity metrics or speculative growth.",
             },
           ].map((item) => {
             const Icon = item.icon;
@@ -85,18 +86,17 @@ export default function DownloadPage() {
                   What to expect
                 </p>
                 <h2 className="mt-4 font-heading text-3xl font-bold tracking-tight sm:text-4xl">
-                  Clear updates. No fake store buttons.
+                  Live access. Real support.
                 </h2>
                 <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-                  Until the mobile release is ready, this page stays honest. If you want
-                  to be notified when kanek opens up, send a note and we will add you to
-                  the launch updates list.
+                  kanek is live, and this page stays direct about how access works.
+                  Send a note and we will help you get set up quickly.
                 </p>
               </div>
               <div className="rounded-3xl border border-accent-green/20 bg-accent-green/5 p-6 text-sm text-muted-foreground lg:max-w-sm">
                 <BellRing className="mb-4 h-6 w-6 text-accent-green" />
-                Launch updates are handled manually right now so the first wave stays
-                intentional and supportable.
+                Getting started is handled directly so support stays local,
+                stable, and responsive.
               </div>
             </div>
           </div>

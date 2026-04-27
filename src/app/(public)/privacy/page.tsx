@@ -268,12 +268,12 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
-            The privacy rules that match how kanek actually works today.
+            The privacy rules that match how kanek actually works.
             Straight answers, clear boundaries, and no fake promises.
           </p>
           <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-green" />
-            Last updated: April 23, 2026
+            Last updated: April 27, 2026
           </div>
         </div>
       </section>
