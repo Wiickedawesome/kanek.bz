@@ -54,20 +54,22 @@ export function Header() {
             </SheetTrigger>
             <SheetContent side="right" className="w-72">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <div className="flex flex-col gap-4 pt-8">
-                {links.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={() => setOpen(false)}
-                    className="text-lg font-medium text-foreground transition-colors hover:text-accent-green"
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-                <Button nativeButton={false} render={<Link href="/download" onClick={() => setOpen(false)} />} className="mt-4 bg-accent-green hover:bg-accent-green/90 text-forest-900 font-semibold">
-                  Get the App
-                </Button>
+              <div className="flex h-full w-full flex-col items-center pt-24">
+                <div className="flex w-full max-w-60 flex-col items-center gap-6 text-center">
+                  {links.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setOpen(false)}
+                      className="w-full text-center text-lg font-medium text-foreground transition-colors hover:text-accent-green"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                  <Button nativeButton={false} render={<Link href="/download" onClick={() => setOpen(false)} />} className="mt-2 w-full bg-accent-green hover:bg-accent-green/90 text-forest-900 font-semibold">
+                    Get the App
+                  </Button>
+                </div>
               </div>
             </SheetContent>
           </Sheet>

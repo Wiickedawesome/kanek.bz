@@ -180,6 +180,8 @@ interface ParticleTextEffectProps {
   words?: string[];
   className?: string;
   theme?: string;
+  textCenterYRatio?: number;
+  mobileTextCenterYRatio?: number;
 }
 
 const DEFAULT_WORDS = ["kanek", "RIDES", "DELIVER", "KANEK", "BELIZE"];
@@ -188,6 +190,8 @@ export function ParticleTextEffect({
   words = DEFAULT_WORDS,
   className = "",
   theme = "dark",
+  textCenterYRatio = 0.5,
+  mobileTextCenterYRatio,
 }: ParticleTextEffectProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
@@ -201,6 +205,16 @@ export function ParticleTextEffect({
   const drawAsPoints = true;
   const INITIAL_WORD_HOLD_MS = 6000;
   const WORD_HOLD_MS = 4000;
+
+  const getTextCenterY = (canvas: HTMLCanvasElement) => {
+    const { width } = canvas.getBoundingClientRect();
+    const centerYRatio =
+      width < 640 && mobileTextCenterYRatio !== undefined
+        ? mobileTextCenterYRatio
+        : textCenterYRatio;
+
+    return canvas.height * centerYRatio;
+  };
 
   const generateRandomPos = (
     x: number,
@@ -235,6 +249,7 @@ export function ParticleTextEffect({
     offscreenCanvas.width = canvas.width;
     offscreenCanvas.height = canvas.height;
     const offscreenCtx = offscreenCanvas.getContext("2d")!;
+    const textCenterY = getTextCenterY(canvas);
 
     offscreenCtx.fillStyle = "white";
     const baseFontSize = Math.min(canvas.width * 0.12, 180);
@@ -251,7 +266,7 @@ export function ParticleTextEffect({
     offscreenCtx.font = `bold ${fontSize}px Arial`;
     offscreenCtx.textAlign = "center";
     offscreenCtx.textBaseline = "middle";
-    offscreenCtx.fillText(word, canvas.width / 2, canvas.height / 2);
+    offscreenCtx.fillText(word, canvas.width / 2, textCenterY);
 
     const imageData = offscreenCtx.getImageData(
       0,

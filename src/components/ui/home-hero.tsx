@@ -36,6 +36,7 @@ export function HomeHero() {
           words={["kanek", "RIDES", "DELIVER", "ERRANDS", "JOBS", "KANEK", "BELIZE"]}
           className="h-full w-full"
           theme={resolvedTheme ?? "dark"}
+          mobileTextCenterYRatio={0.34}
         />
       </motion.div>
 
