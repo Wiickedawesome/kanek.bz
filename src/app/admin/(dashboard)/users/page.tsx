@@ -23,9 +23,15 @@ type Profile = {
   role: string;
   account_status: string;
   rating_avg: number | null;
+  punctuality_pct: number | null;
   strikes_soft: number;
   strikes_hard: number;
   created_at: string;
+  last_active_at: string | null;
+  district: string | null;
+  address_line: string | null;
+  emergency_contact: string | null;
+  avatar_url: string | null;
 };
 
 type DriverDetail = {
@@ -344,9 +350,23 @@ function UsersPageInner() {
         {/* Profile header */}
         <div className="rounded-lg border bg-card p-6 space-y-4">
           <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">{fullName}</h2>
-              <p className="text-sm text-muted-foreground">{detailProfile.email}</p>
+            <div className="flex items-center gap-4">
+              {detailProfile.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={detailProfile.avatar_url}
+                  alt={fullName}
+                  className="h-14 w-14 rounded-full object-cover border"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-full border bg-muted/60 flex items-center justify-center text-xl font-semibold text-muted-foreground select-none">
+                  {(detailProfile.first_name?.[0] ?? detailProfile.email?.[0] ?? "?").toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h2 className="text-xl font-semibold">{fullName}</h2>
+                <p className="text-sm text-muted-foreground">{detailProfile.email}</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge value={detailProfile.role} />
@@ -361,8 +381,23 @@ function UsersPageInner() {
             <InfoField label="Status" value={detailProfile.account_status} />
             <InfoField label="Rating" value={detailProfile.rating_avg?.toFixed(1) ?? "—"} />
             <InfoField
+              label="Punctuality"
+              value={detailProfile.punctuality_pct != null ? `${detailProfile.punctuality_pct}%` : "—"}
+            />
+            <InfoField
               label="Strikes"
               value={`${detailProfile.strikes_soft} soft / ${detailProfile.strikes_hard} hard`}
+            />
+            <InfoField label="District" value={detailProfile.district ?? "—"} />
+            <InfoField label="Address" value={detailProfile.address_line ?? "—"} />
+            <InfoField label="Emergency Contact" value={detailProfile.emergency_contact ?? "—"} />
+            <InfoField
+              label="Last Active"
+              value={
+                detailProfile.last_active_at
+                  ? new Date(detailProfile.last_active_at).toLocaleString()
+                  : "—"
+              }
             />
             <InfoField
               label="Joined"
@@ -370,7 +405,17 @@ function UsersPageInner() {
             />
           </div>
 
-          <div className="flex gap-2 pt-2 border-t">
+          <div className="flex gap-2 pt-2 border-t flex-wrap">
+            {detailProfile.account_status === "pending" && (
+              <ActionButton
+                variant="default"
+                loading={actionLoading === "account"}
+                disabled={!adminOpsEnabled}
+                onClick={() => updateAccountStatus(detailProfile.id, "active")}
+              >
+                Approve Account
+              </ActionButton>
+            )}
             {detailProfile.account_status !== "suspended" ? (
               <ActionButton
                 variant="destructive"

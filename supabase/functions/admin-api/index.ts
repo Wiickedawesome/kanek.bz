@@ -471,7 +471,7 @@ async function handleUserDetail({ service }: AdminContext, payload: JsonRecord) 
   const [profile, driver, driverDocs, riderDocs] = await Promise.all([
     service
       .from("profiles")
-      .select("id, first_name, last_name, email, phone, role, account_status, rating_avg, strikes_soft, strikes_hard, created_at")
+      .select("id, first_name, last_name, email, phone, role, account_status, rating_avg, punctuality_pct, strikes_soft, strikes_hard, created_at, last_active_at, district, address_line, emergency_contact, avatar_url")
       .eq("id", userId)
       .single(),
     service
