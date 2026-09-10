@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["framer-motion"],
   },
+  turbopack: {
+    root: process.cwd(),
+  },
 };
 
 export default nextConfig;

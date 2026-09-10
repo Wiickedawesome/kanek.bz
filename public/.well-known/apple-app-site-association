@@ -4,7 +4,7 @@
     "details": [
       {
         "appIDs": ["6VR44TAYT7.bz.kanek.app"],
-        "paths": ["/post/*", "/profile/*", "/invite/*"]
+        "paths": ["/explore/*", "/post/*", "/activity/*", "/profile/*", "/invite/*", "/auth/*"]
       }
     ]
   }
