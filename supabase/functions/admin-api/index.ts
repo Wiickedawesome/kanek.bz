@@ -856,7 +856,7 @@ async function handleModerationList({ service }: AdminContext) {
   const [flags, strikes, actions] = await Promise.all([
     service
       .from("flags")
-      .select("id, reporter_id, target_type, target_id, reason, status, reviewed_by, created_at")
+      .select("id, reporter_id, target_type, target_id, reason, description, status, reviewed_by, created_at")
       .order("created_at", { ascending: false })
       .limit(200),
     service
