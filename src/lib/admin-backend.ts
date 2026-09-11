@@ -107,11 +107,90 @@ export async function getAdminDashboardStats() {
   return callAdminBackend<AdminDashboardStats>("/dashboard/overview", {});
 }
 
-export async function getAdminBookingsData<TBookings, TContracts>() {
-  return callAdminBackend<{ bookings: TBookings[]; contracts: TContracts[] }>(
-    "/bookings/list",
-    {}
-  );
+export type BookingAuditItem = {
+  id: string;
+  bookingId: string | null;
+  contractId: string | null;
+  postId: string;
+  status: string;
+  bookingStatus: string | null;
+  contractStatus: string | null;
+  createdAt: string;
+  departureAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  seatsBooked: number;
+  paymentMethod: string | null;
+  agreedPriceCents: number | null;
+  originAddress: string | null;
+  destAddress: string | null;
+  postTitle: string | null;
+  postType: string | null;
+  driver: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    avatarUrl: string | null;
+    ratingAvg: number | null;
+    punctualityPct: number | null;
+    accountStatus: string | null;
+    vehicle: {
+      make: string | null;
+      model: string | null;
+      year: number | null;
+      color: string | null;
+      plate: string | null;
+      verified: boolean;
+    } | null;
+  } | null;
+  rider: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    avatarUrl: string | null;
+    ratingAvg: number | null;
+    emergencyContact: string | null;
+    accountStatus: string | null;
+  } | null;
+  timeline: {
+    id: string;
+    type: string;
+    label: string;
+    timestamp: string;
+    actorId: string | null;
+    actorName: string | null;
+    actorRole: "driver" | "rider" | "system" | "admin";
+    note: string | null;
+  }[];
+  ratings: {
+    id: string;
+    raterId: string;
+    raterName: string;
+    ratedId: string;
+    ratedName: string;
+    stars: number;
+    comment: string | null;
+    wasOnTime: boolean | null;
+    createdAt: string;
+  }[];
+  flags: {
+    id: string;
+    reason: string;
+    description: string | null;
+    status: string;
+    createdAt: string;
+  }[];
+};
+
+export async function getAdminBookingsData<TBookings = unknown, TContracts = unknown>() {
+  return callAdminBackend<{
+    auditItems: BookingAuditItem[];
+    bookings: TBookings[];
+    contracts: TContracts[];
+  }>("/bookings/list", {});
 }
 
 export async function getAdminContractEvents<TEvent>(contractId: string) {

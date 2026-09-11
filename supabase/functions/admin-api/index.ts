@@ -227,27 +227,564 @@ async function handleDashboardOverview({ service }: AdminContext) {
   };
 }
 
+function formatTripEventLabel(eventType: string) {
+  const map: Record<string, string> = {
+    en_route: "Driver En Route to Pickup",
+    arrived_pickup: "Driver Arrived at Pickup Location",
+    departed: "Trip Started (Departed)",
+    arrived_destination: "Arrived at Destination",
+    completed: "Trip Completed",
+    cancelled: "Trip Cancelled",
+    arrived_location: "Helper Arrived at Location",
+    picked_up: "Item / Package Picked Up",
+    returning: "Helper Returning",
+    delivered: "Item / Package Delivered",
+    checked_in: "Worker Checked In",
+    started_work: "Work Started",
+    completed_work: "Work Completed",
+  };
+  return map[eventType] ?? eventType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 async function handleBookingsList({ service }: AdminContext) {
-  const [bookings, contracts] = await Promise.all([
+  const [bookingsRes, contractsRes] = await Promise.all([
     service
       .from("bookings")
-      .select("id, post_id, user_id, role, status, seats_booked, payment_method, created_at")
+      .select("id, post_id, user_id, role, status, seats_booked, payment_method, cancel_reason, cancelled_at, created_at, updated_at")
       .order("created_at", { ascending: false })
       .limit(200),
     service
       .from("contracts")
-      .select("id, post_id, booking_id, origin_address, dest_address, agreed_price_cents, status, created_at")
+      .select("id, post_id, booking_id, origin_address, dest_address, agreed_price_cents, status, departure_at, completed_at, parties, terms, created_at")
       .order("created_at", { ascending: false })
       .limit(200),
   ]);
 
-  if (bookings.error || contracts.error) {
-    throw new HttpError(500, bookings.error?.message ?? contracts.error?.message ?? "Failed to load bookings.");
+  if (bookingsRes.error || contractsRes.error) {
+    throw new HttpError(
+      500,
+      bookingsRes.error?.message ?? contractsRes.error?.message ?? "Failed to load bookings."
+    );
   }
 
+  const rawBookings = bookingsRes.data ?? [];
+  const rawContracts = contractsRes.data ?? [];
+
+  // 1. Gather all post IDs
+  const postIds = Array.from(
+    new Set([
+      ...rawBookings.map((b) => b.post_id),
+      ...rawContracts.map((c) => c.post_id),
+    ].filter(Boolean))
+  );
+
+  // 2. Gather all contract IDs
+  const contractIds = Array.from(new Set(rawContracts.map((c) => c.id).filter(Boolean)));
+
+  // 3. Batch fetch related posts, contract events, and ratings
+  const [postsRes, eventsRes, ratingsRes] = await Promise.all([
+    postIds.length > 0
+      ? service
+          .from("posts")
+          .select("id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_remaining, created_at")
+          .in("id", postIds)
+      : Promise.resolve({ data: [] }),
+    contractIds.length > 0
+      ? service
+          .from("contract_events")
+          .select("id, contract_id, actor_id, event_type, note, created_at")
+          .in("contract_id", contractIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    contractIds.length > 0
+      ? service
+          .from("ratings")
+          .select("id, contract_id, rater_id, rated_id, stars, comment, was_on_time, created_at")
+          .in("contract_id", contractIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const rawPosts = postsRes.data ?? [];
+  const rawEvents = eventsRes.data ?? [];
+  const rawRatings = ratingsRes.data ?? [];
+
+  type BookingFlag = {
+    id: string;
+    reporter_id: string;
+    target_type: string;
+    target_id: string;
+    reason: string;
+    description: string | null;
+    status: string;
+    created_at: string;
+  };
+
+  type BookingProfile = {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+    avatar_url: string | null;
+    role: string;
+    rating_avg: number | null;
+    punctuality_pct: number | null;
+    emergency_contact: string | null;
+    account_status: string | null;
+  };
+
+  type BookingDriverDetail = {
+    id: string;
+    vehicle_make: string | null;
+    vehicle_model: string | null;
+    vehicle_year: number | null;
+    vehicle_color: string | null;
+    vehicle_plate: string | null;
+    verified: boolean;
+    review_status: string;
+  };
+
+  type BookingPost = {
+    id: string;
+    author_id: string;
+    type: string;
+    status: string;
+    title: string | null;
+    description: string | null;
+    origin_address: string | null;
+    dest_address: string | null;
+    departure_at: string | null;
+    price_cents: number | null;
+    seats_total: number | null;
+    seats_remaining: number | null;
+    created_at: string;
+  };
+
+  type BookingTimelineItem = {
+    id: string;
+    type: string;
+    label: string;
+    timestamp: string;
+    actorId: string | null;
+    actorName: string | null;
+    actorRole: string;
+    note: string | null;
+  };
+
+  // 4. Batch fetch flags related to contracts or posts
+  const targetIds = Array.from(new Set([...contractIds, ...postIds, ...rawBookings.map((b) => b.id)]));
+  let rawFlags: BookingFlag[] = [];
+  if (targetIds.length > 0) {
+    const flagsRes = await service
+      .from("flags")
+      .select("id, reporter_id, target_type, target_id, reason, description, status, created_at")
+      .in("target_id", targetIds);
+    rawFlags = (flagsRes.data as BookingFlag[]) ?? [];
+  }
+
+  // 5. Gather all user IDs
+  const userIds = new Set<string>();
+  rawBookings.forEach((b) => b.user_id && userIds.add(b.user_id));
+  rawPosts.forEach((p) => p.author_id && userIds.add(p.author_id));
+  rawContracts.forEach((c) => (c.parties || []).forEach((uid: string) => uid && userIds.add(uid)));
+  rawEvents.forEach((e) => e.actor_id && userIds.add(e.actor_id));
+  rawRatings.forEach((r) => {
+    if (r.rater_id) userIds.add(r.rater_id);
+    if (r.rated_id) userIds.add(r.rated_id);
+  });
+  rawFlags.forEach((f) => f.reporter_id && userIds.add(f.reporter_id));
+
+  const userIdList = Array.from(userIds);
+
+  // 6. Batch fetch profiles and driver_details
+  const [profilesRes, driversRes] = await Promise.all([
+    userIdList.length > 0
+      ? service
+          .from("profiles")
+          .select("id, first_name, last_name, email, phone, avatar_url, role, rating_avg, punctuality_pct, emergency_contact, account_status")
+          .in("id", userIdList)
+      : Promise.resolve({ data: [] }),
+    userIdList.length > 0
+      ? service
+          .from("driver_details")
+          .select("id, vehicle_make, vehicle_model, vehicle_year, vehicle_color, vehicle_plate, verified, review_status")
+          .in("id", userIdList)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const profilesMap = new Map(((profilesRes.data as BookingProfile[]) ?? []).map((p) => [p.id, p]));
+  const driversMap = new Map(((driversRes.data as BookingDriverDetail[]) ?? []).map((d) => [d.id, d]));
+  const postsMap = new Map(((rawPosts as BookingPost[]) ?? []).map((p) => [p.id, p]));
+
+  function getDisplayName(uid?: string | null) {
+    if (!uid) return "Unknown User";
+    const p = profilesMap.get(uid);
+    if (!p) return `User ${uid.slice(0, 8)}`;
+    const full = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
+    if (full) return full;
+    if (p.email) return p.email.split("@")[0];
+    if (p.phone) return p.phone;
+    return `User ${uid.slice(0, 8)}`;
+  }
+
+  // 7. Assemble Unified BookingAuditItems
+  const auditItems: Record<string, unknown>[] = [];
+  const processedContractIds = new Set<string>();
+
+  // Process all bookings
+  for (const b of rawBookings) {
+    const post = postsMap.get(b.post_id);
+    const contract =
+      rawContracts.find((c) => c.booking_id === b.id) ||
+      rawContracts.find((c) => c.post_id === b.post_id);
+
+    if (contract) {
+      processedContractIds.add(contract.id);
+    }
+
+    // Determine Driver vs Rider
+    let driverId: string | null = null;
+    let riderId: string | null = null;
+
+    if (b.role === "rider") {
+      riderId = b.user_id;
+      driverId = post?.author_id ?? (contract?.parties?.find((p: string) => p !== riderId) || null);
+    } else {
+      driverId = b.user_id;
+      riderId = post?.author_id ?? (contract?.parties?.find((p: string) => p !== driverId) || null);
+    }
+
+    const driverProfile = driverId ? profilesMap.get(driverId) : null;
+    const driverDetail = driverId ? driversMap.get(driverId) : null;
+    const riderProfile = riderId ? profilesMap.get(riderId) : null;
+
+    // Events for this contract
+    const events = contract ? rawEvents.filter((e) => e.contract_id === contract.id) : [];
+
+    // Construct Timeline
+    const timeline: BookingTimelineItem[] = [];
+
+    // Milestone 1: Booking requested
+    timeline.push({
+      id: `booking-${b.id}`,
+      type: "booking_requested",
+      label: "Booking Requested",
+      timestamp: b.created_at,
+      actorId: b.user_id,
+      actorName: getDisplayName(b.user_id),
+      actorRole: b.role,
+      note: b.seats_booked ? `${b.seats_booked} seat(s) requested` : null,
+    });
+
+    // Milestone 2: Contract created / accepted
+    if (contract) {
+      timeline.push({
+        id: `contract-${contract.id}`,
+        type: "contract_formed",
+        label: "Booking Confirmed & Contract Formed",
+        timestamp: contract.created_at,
+        actorId: driverId,
+        actorName: getDisplayName(driverId),
+        actorRole: "driver",
+        note: contract.agreed_price_cents
+          ? `Agreed fare: $${(contract.agreed_price_cents / 100).toFixed(2)} BZD`
+          : null,
+      });
+    }
+
+    // Milestone 3+: Operational events from contract_events
+    for (const ev of events) {
+      const actorRole =
+        ev.actor_id === driverId ? "driver" : ev.actor_id === riderId ? "rider" : "system";
+      timeline.push({
+        id: ev.id,
+        type: ev.event_type,
+        label: formatTripEventLabel(ev.event_type),
+        timestamp: ev.created_at,
+        actorId: ev.actor_id,
+        actorName: getDisplayName(ev.actor_id),
+        actorRole,
+        note: ev.note,
+      });
+    }
+
+    // Milestone: Cancellation
+    if (b.status === "cancelled" || b.cancelled_at) {
+      const alreadyHasCancel = timeline.some((t) => t.type === "cancelled");
+      if (!alreadyHasCancel) {
+        timeline.push({
+          id: `cancel-${b.id}`,
+          type: "cancelled",
+          label: "Booking Cancelled",
+          timestamp: b.cancelled_at || b.updated_at || b.created_at,
+          actorId: null,
+          actorName: null,
+          actorRole: "system",
+          note: b.cancel_reason ? `Reason: ${b.cancel_reason}` : "Cancellation recorded",
+        });
+      }
+    }
+
+    // Milestone: Completion
+    if ((b.status === "completed" || contract?.status === "completed") && contract?.completed_at) {
+      const alreadyHasComplete = timeline.some(
+        (t) => t.type === "completed" || t.type === "arrived_destination"
+      );
+      if (!alreadyHasComplete) {
+        timeline.push({
+          id: `complete-${b.id}`,
+          type: "completed",
+          label: "Trip Completed",
+          timestamp: contract.completed_at,
+          actorId: driverId,
+          actorName: getDisplayName(driverId),
+          actorRole: "driver",
+          note: null,
+        });
+      }
+    }
+
+    timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // Ratings for this ride
+    const ratings = contract
+      ? rawRatings
+          .filter((r) => r.contract_id === contract.id)
+          .map((r) => ({
+            id: r.id,
+            raterId: r.rater_id,
+            raterName: getDisplayName(r.rater_id),
+            ratedId: r.rated_id,
+            ratedName: getDisplayName(r.rated_id),
+            stars: r.stars,
+            comment: r.comment,
+            wasOnTime: r.was_on_time,
+            createdAt: r.created_at,
+          }))
+      : [];
+
+    // Flags for this ride
+    const flags = rawFlags
+      .filter((f) => f.target_id === contract?.id || f.target_id === b.id || f.target_id === b.post_id)
+      .map((f) => ({
+        id: f.id,
+        reason: f.reason,
+        description: f.description,
+        status: f.status,
+        createdAt: f.created_at,
+      }));
+
+    auditItems.push({
+      id: b.id,
+      bookingId: b.id,
+      contractId: contract?.id ?? null,
+      postId: b.post_id,
+      status: contract?.status ?? b.status,
+      bookingStatus: b.status,
+      contractStatus: contract?.status ?? null,
+      createdAt: b.created_at,
+      departureAt: contract?.departure_at ?? post?.departure_at ?? null,
+      completedAt: contract?.completed_at ?? null,
+      cancelledAt: b.cancelled_at ?? null,
+      cancelReason: b.cancel_reason ?? null,
+      seatsBooked: b.seats_booked ?? 1,
+      paymentMethod: b.payment_method ?? null,
+      agreedPriceCents:
+        contract?.agreed_price_cents ??
+        (post?.price_cents ? post.price_cents * (b.seats_booked ?? 1) : null),
+      originAddress: contract?.origin_address ?? post?.origin_address ?? null,
+      destAddress: contract?.dest_address ?? post?.dest_address ?? null,
+      postTitle: post?.title ?? null,
+      postType: post?.type ?? null,
+      driver: driverId
+        ? {
+            id: driverId,
+            name: getDisplayName(driverId),
+            email: driverProfile?.email ?? null,
+            phone: driverProfile?.phone ?? null,
+            avatarUrl: driverProfile?.avatar_url ?? null,
+            ratingAvg: driverProfile?.rating_avg ?? null,
+            punctualityPct: driverProfile?.punctuality_pct ?? null,
+            accountStatus: driverProfile?.account_status ?? null,
+            vehicle: driverDetail
+              ? {
+                  make: driverDetail.vehicle_make,
+                  model: driverDetail.vehicle_model,
+                  year: driverDetail.vehicle_year,
+                  color: driverDetail.vehicle_color,
+                  plate: driverDetail.vehicle_plate,
+                  verified: driverDetail.verified,
+                }
+              : null,
+          }
+        : null,
+      rider: riderId
+        ? {
+            id: riderId,
+            name: getDisplayName(riderId),
+            email: riderProfile?.email ?? null,
+            phone: riderProfile?.phone ?? null,
+            avatarUrl: riderProfile?.avatar_url ?? null,
+            ratingAvg: riderProfile?.rating_avg ?? null,
+            emergencyContact: riderProfile?.emergency_contact ?? null,
+            accountStatus: riderProfile?.account_status ?? null,
+          }
+        : null,
+      timeline,
+      ratings,
+      flags,
+    });
+  }
+
+  // Also include standalone contracts not tied to a booking
+  for (const c of rawContracts) {
+    if (processedContractIds.has(c.id)) continue;
+    const post = postsMap.get(c.post_id);
+    const parties = c.parties || [];
+    const driverId = post?.author_id ?? parties[0] ?? null;
+    const riderId = parties.find((p: string) => p !== driverId) ?? parties[1] ?? null;
+
+    const driverProfile = driverId ? profilesMap.get(driverId) : null;
+    const driverDetail = driverId ? driversMap.get(driverId) : null;
+    const riderProfile = riderId ? profilesMap.get(riderId) : null;
+
+    const events = rawEvents.filter((e) => e.contract_id === c.id);
+    const timeline: BookingTimelineItem[] = [
+      {
+        id: `contract-${c.id}`,
+        type: "contract_formed",
+        label: "Contract Formed",
+        timestamp: c.created_at,
+        actorId: driverId,
+        actorName: getDisplayName(driverId),
+        actorRole: "driver",
+        note: c.agreed_price_cents
+          ? `Agreed fare: $${(c.agreed_price_cents / 100).toFixed(2)} BZD`
+          : null,
+      },
+    ];
+
+    for (const ev of events) {
+      const actorRole =
+        ev.actor_id === driverId ? "driver" : ev.actor_id === riderId ? "rider" : "system";
+      timeline.push({
+        id: ev.id,
+        type: ev.event_type,
+        label: formatTripEventLabel(ev.event_type),
+        timestamp: ev.created_at,
+        actorId: ev.actor_id,
+        actorName: getDisplayName(ev.actor_id),
+        actorRole,
+        note: ev.note,
+      });
+    }
+
+    if (c.completed_at) {
+      timeline.push({
+        id: `complete-${c.id}`,
+        type: "completed",
+        label: "Trip Completed",
+        timestamp: c.completed_at,
+        actorId: driverId,
+        actorName: getDisplayName(driverId),
+        actorRole: "driver",
+        note: null,
+      });
+    }
+
+    timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const ratings = rawRatings
+      .filter((r) => r.contract_id === c.id)
+      .map((r) => ({
+        id: r.id,
+        raterId: r.rater_id,
+        raterName: getDisplayName(r.rater_id),
+        ratedId: r.rated_id,
+        ratedName: getDisplayName(r.rated_id),
+        stars: r.stars,
+        comment: r.comment,
+        wasOnTime: r.was_on_time,
+        createdAt: r.created_at,
+      }));
+
+    const flags = rawFlags
+      .filter((f) => f.target_id === c.id || f.target_id === c.post_id)
+      .map((f) => ({
+        id: f.id,
+        reason: f.reason,
+        description: f.description,
+        status: f.status,
+        createdAt: f.created_at,
+      }));
+
+    auditItems.push({
+      id: c.id,
+      bookingId: c.booking_id ?? null,
+      contractId: c.id,
+      postId: c.post_id,
+      status: c.status,
+      bookingStatus: null,
+      contractStatus: c.status,
+      createdAt: c.created_at,
+      departureAt: c.departure_at ?? post?.departure_at ?? null,
+      completedAt: c.completed_at ?? null,
+      cancelledAt: null,
+      cancelReason: null,
+      seatsBooked: 1,
+      paymentMethod: null,
+      agreedPriceCents: c.agreed_price_cents,
+      originAddress: c.origin_address ?? post?.origin_address ?? null,
+      destAddress: c.dest_address ?? post?.dest_address ?? null,
+      postTitle: post?.title ?? null,
+      postType: post?.type ?? null,
+      driver: driverId
+        ? {
+            id: driverId,
+            name: getDisplayName(driverId),
+            email: driverProfile?.email ?? null,
+            phone: driverProfile?.phone ?? null,
+            avatarUrl: driverProfile?.avatar_url ?? null,
+            ratingAvg: driverProfile?.rating_avg ?? null,
+            punctualityPct: driverProfile?.punctuality_pct ?? null,
+            accountStatus: driverProfile?.account_status ?? null,
+            vehicle: driverDetail
+              ? {
+                  make: driverDetail.vehicle_make,
+                  model: driverDetail.vehicle_model,
+                  year: driverDetail.vehicle_year,
+                  color: driverDetail.vehicle_color,
+                  plate: driverDetail.vehicle_plate,
+                  verified: driverDetail.verified,
+                }
+              : null,
+          }
+        : null,
+      rider: riderId
+        ? {
+            id: riderId,
+            name: getDisplayName(riderId),
+            email: riderProfile?.email ?? null,
+            phone: riderProfile?.phone ?? null,
+            avatarUrl: riderProfile?.avatar_url ?? null,
+            ratingAvg: riderProfile?.rating_avg ?? null,
+            emergencyContact: riderProfile?.emergency_contact ?? null,
+            accountStatus: riderProfile?.account_status ?? null,
+          }
+        : null,
+      timeline,
+      ratings,
+      flags,
+    });
+  }
+
+  // Sort all audit items by createdAt descending
+  auditItems.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   return {
-    bookings: bookings.data ?? [],
-    contracts: contracts.data ?? [],
+    auditItems,
+    bookings: rawBookings,
+    contracts: rawContracts,
   };
 }
 
