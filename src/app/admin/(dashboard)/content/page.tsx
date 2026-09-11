@@ -814,6 +814,14 @@ function ContentPageInner() {
                   <span className="text-muted-foreground font-sans">
                     Posted on {new Date(selectedPost.created_at).toLocaleString()}
                   </span>
+                  <span className="text-border">&bull;</span>
+                  <Link
+                    href={`/admin/bookings?q=${selectedPost.id}`}
+                    className="font-sans text-[11px] text-accent-blue hover:underline inline-flex items-center gap-1 font-medium"
+                    title="View bookings and contracts for this listing"
+                  >
+                    View Bookings <ArrowRight className="h-2.5 w-2.5" />
+                  </Link>
                 </div>
               </div>
               <button

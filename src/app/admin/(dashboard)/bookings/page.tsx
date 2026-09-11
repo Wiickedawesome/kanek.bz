@@ -880,7 +880,7 @@ function BookingsPageInner() {
               })}
               {filteredAuditItems.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
                     {searchQuery
                       ? "No bookings match your search criteria."
                       : "No bookings found."}
@@ -944,6 +944,19 @@ function BookingsPageInner() {
                       <>
                         <span className="text-border">&bull;</span>
                         <span>Contract: {selectedItem.contractId}</span>
+                      </>
+                    )}
+                    {selectedItem.postId && (
+                      <>
+                        <span className="text-border">&bull;</span>
+                        <span>Post: {selectedItem.postId.slice(0, 8)}</span>
+                        <Link
+                          href={`/admin/content?id=${selectedItem.postId}`}
+                          className="font-sans text-[11px] text-accent-blue hover:underline inline-flex items-center gap-1 font-medium ml-1"
+                          title="Open original listing in marketplace"
+                        >
+                          View Listing <ArrowRight className="h-2.5 w-2.5" />
+                        </Link>
                       </>
                     )}
                   </div>

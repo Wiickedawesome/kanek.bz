@@ -639,14 +639,26 @@ function UsersPageInner() {
                 Unsuspend User
               </ActionButton>
             )}
-            <button
-              type="button"
-              onClick={() => router.push(`/admin/bookings?q=${detailProfile.id}`)}
-              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors inline-flex items-center justify-center gap-1.5 min-h-[26px] bg-muted hover:bg-muted/80 text-foreground border border-input ml-auto"
-            >
-              <span>View User Rides</span>
-              <ArrowRight className="h-3 w-3" />
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push(`/admin/content?q=${detailProfile.id}`)}
+                className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors inline-flex items-center justify-center gap-1.5 min-h-[26px] bg-muted hover:bg-muted/80 text-foreground border border-input"
+                title="View marketplace listings authored by this user"
+              >
+                <span>View Listings</span>
+                <ArrowRight className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/admin/bookings?q=${detailProfile.id}`)}
+                className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors inline-flex items-center justify-center gap-1.5 min-h-[26px] bg-muted hover:bg-muted/80 text-foreground border border-input"
+                title="View bookings and contracts involving this user"
+              >
+                <span>View Bookings</span>
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            </div>
           </div>
         </div>
 
