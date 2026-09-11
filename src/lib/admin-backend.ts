@@ -234,14 +234,19 @@ export async function getAdminUsersData<TProfile, TDriverDetail, TDriverDocument
   }>("/users/list", {});
 }
 
-export async function getAdminUserDetail<TProfile, TDriverDetail, TDriverDocument, TRiderDocument>(
-  userId: string
-) {
+export async function getAdminUserDetail<
+  TProfile,
+  TDriverDetail,
+  TDriverDocument,
+  TRiderDocument,
+  TTaxiAssociation = Record<string, unknown>
+>(userId: string) {
   return callAdminBackend<{
     profile: TProfile | null;
     driver: TDriverDetail | null;
     driverDocs: TDriverDocument[];
     riderDocs: TRiderDocument[];
+    taxiAssociation?: TTaxiAssociation | null;
   }>("/users/detail", { userId });
 }
 

@@ -11,6 +11,8 @@ import {
   Loader2,
   Copy,
   Check,
+  Award,
+  Phone,
 } from "lucide-react";
 import {
   declineAdminAccount,
@@ -61,6 +63,8 @@ type Profile = {
   address_line: string | null;
   emergency_contact: string | null;
   avatar_url: string | null;
+  taxi_association_name?: string | null;
+  taxi_association_verified?: boolean | null;
 };
 
 type DriverDetail = {
@@ -75,6 +79,19 @@ type DriverDetail = {
   license_url: string | null;
   insurance_url: string | null;
   id_document_url: string | null;
+  taxi_association_id?: string | null;
+  taxi_association_name?: string | null;
+  taxi_association_member_id?: string | null;
+  taxi_association_verified?: boolean | null;
+};
+
+type TaxiAssociationDetail = {
+  id: string;
+  name: string;
+  district: string;
+  address: string | null;
+  phone: string | null;
+  notes: string | null;
 };
 
 type DriverDocument = {
@@ -166,6 +183,7 @@ function UsersPageInner() {
   const [detailDriver, setDetailDriver] = useState<DriverDetail | null>(null);
   const [detailDriverDocs, setDetailDriverDocs] = useState<DriverDocument[]>([]);
   const [detailRiderDocs, setDetailRiderDocs] = useState<RiderDocument[]>([]);
+  const [detailTaxiAssoc, setDetailTaxiAssoc] = useState<TaxiAssociationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
@@ -205,18 +223,21 @@ function UsersPageInner() {
         Profile,
         DriverDetail,
         DriverDocument,
-        RiderDocument
+        RiderDocument,
+        TaxiAssociationDetail
       >(uid);
       setDetailProfile(data.profile);
       setDetailDriver(data.driver);
       setDetailDriverDocs(data.driverDocs);
       setDetailRiderDocs(data.riderDocs);
+      setDetailTaxiAssoc(data.taxiAssociation ?? null);
     } catch (error) {
       setLoadError(getAdminActionErrorMessage(error));
       setDetailProfile(null);
       setDetailDriver(null);
       setDetailDriverDocs([]);
       setDetailRiderDocs([]);
+      setDetailTaxiAssoc(null);
     } finally {
       setDetailLoading(false);
     }
@@ -553,6 +574,12 @@ function UsersPageInner() {
             <div className="flex items-center gap-2">
               <StatusBadge value={detailProfile.role} />
               <StatusBadge value={detailProfile.account_status} />
+              {(detailProfile.taxi_association_verified || detailDriver?.taxi_association_verified) && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                  <Award className="h-3.5 w-3.5 text-amber-500" />
+                  Taxi Verified
+                </span>
+              )}
             </div>
           </div>
 
@@ -586,6 +613,16 @@ function UsersPageInner() {
               label="Joined"
               value={new Date(detailProfile.created_at).toLocaleDateString()}
             />
+            {detailProfile.taxi_association_name && (
+              <InfoField
+                label="Taxi Association"
+                value={`${detailProfile.taxi_association_name}${
+                  detailProfile.taxi_association_verified || detailDriver?.taxi_association_verified
+                    ? " (Verified)"
+                    : " (Unverified)"
+                }`}
+              />
+            )}
           </div>
 
           <div className="flex gap-2 pt-2 border-t flex-wrap items-center">
@@ -699,9 +736,83 @@ function UsersPageInner() {
               <InfoField label="Verified" value={detailDriver.verified ? "Yes" : "No"} />
             </div>
 
+            {(detailDriver.taxi_association_name || detailProfile?.taxi_association_name) && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                      <Award className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">
+                        {detailDriver.taxi_association_name ?? detailProfile?.taxi_association_name}
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        Official Belize Taxi Association Affiliation
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      detailDriver.taxi_association_verified || detailProfile?.taxi_association_verified
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                        : "bg-muted text-muted-foreground border border-border"
+                    }`}
+                  >
+                    {detailDriver.taxi_association_verified || detailProfile?.taxi_association_verified
+                      ? "✓ Golden Verified Taxi Badge Active"
+                      : "Pending Taxi Document Review"}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3 pt-1 border-t border-amber-500/10">
+                  <div>
+                    <span className="text-muted-foreground">Member / Permit ID</span>
+                    <p className="font-medium text-foreground">
+                      {detailDriver.taxi_association_member_id || "Not provided (Optional)"}
+                    </p>
+                  </div>
+                  {detailTaxiAssoc?.phone && (
+                    <div>
+                      <span className="text-muted-foreground">Dispatcher Contact</span>
+                      <p className="font-medium">
+                        <a
+                          href={`tel:${detailTaxiAssoc.phone}`}
+                          className="text-accent-blue hover:underline inline-flex items-center gap-1"
+                        >
+                          <Phone className="h-3 w-3" />
+                          {detailTaxiAssoc.phone}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                  {detailTaxiAssoc?.district && (
+                    <div>
+                      <span className="text-muted-foreground">District / Station</span>
+                      <p className="font-medium text-foreground">
+                        {detailTaxiAssoc.district}
+                        {detailTaxiAssoc.address ? ` • ${detailTaxiAssoc.address}` : ""}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {detailTaxiAssoc?.notes && (
+                  <p className="text-xs text-muted-foreground/80 italic border-t border-amber-500/10 pt-2">
+                    Directory Note: {detailTaxiAssoc.notes}
+                  </p>
+                )}
+
+                <div className="rounded bg-background/50 p-2.5 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Verification Requirement:</span> Inspect the{" "}
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">Taxi Association Card / Decal</span> in the documents table below. Approving that document will immediately enable the golden taxi verification badge across the mobile app.
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground">Documents on File</h4>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 <DocCard
                   label="Driver License"
                   documentRef={
@@ -732,6 +843,17 @@ function UsersPageInner() {
                   loading={documentLoading === "driver-reg"}
                   onPreview={(documentRef) => previewDocument(documentRef, "driver-reg")}
                 />
+                {(detailDriver.taxi_association_name || detailDriverDocs.some((d) => d.document_type === "taxi_association_card")) && (
+                  <DocCard
+                    label="Taxi Association Card / Decal"
+                    documentRef={
+                      detailDriverDocs.find((d) => d.document_type === "taxi_association_card")?.document_url ?? null
+                    }
+                    disabled={!adminOpsEnabled}
+                    loading={documentLoading === "driver-taxi-assoc"}
+                    onPreview={(documentRef) => previewDocument(documentRef, "driver-taxi-assoc")}
+                  />
+                )}
               </div>
             </div>
 
@@ -1369,7 +1491,17 @@ function UsersPageInner() {
                           className="cursor-pointer border-b transition-colors hover:bg-muted/30"
                         >
                           <td className="px-3 py-2">
-                            <div className="font-medium text-foreground">{getUserDisplayName(p)}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-foreground">{getUserDisplayName(p)}</span>
+                              {(p.taxi_association_verified || dd?.taxi_association_verified) && (
+                                <span
+                                  title={`Verified Taxi Driver: ${p.taxi_association_name || dd?.taxi_association_name || "Association Member"}`}
+                                  className="inline-flex items-center text-amber-500"
+                                >
+                                  <Award className="h-3.5 w-3.5" />
+                                </span>
+                              )}
+                            </div>
                             {(p.first_name || p.last_name) && (p.email || p.phone) ? (
                               <div className="text-xs text-muted-foreground">{p.email ?? p.phone}</div>
                             ) : null}
@@ -1565,6 +1697,7 @@ function StatusBadge({ value }: { value?: string | null }) {
     drivers_license: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
     vehicle_insurance: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
     vehicle_registration: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
+    taxi_association_card: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
   };
   return (
     <span

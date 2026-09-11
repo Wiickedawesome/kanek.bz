@@ -1238,12 +1238,12 @@ async function handleUserDetail({ service }: AdminContext, payload: JsonRecord) 
   const [profile, driver, driverDocs, riderDocs] = await Promise.all([
     service
       .from("profiles")
-      .select("id, first_name, last_name, email, phone, role, account_status, rating_avg, punctuality_pct, strikes_soft, strikes_hard, created_at, last_active_at, district, address_line, emergency_contact, avatar_url")
+      .select("id, first_name, last_name, email, phone, role, account_status, rating_avg, punctuality_pct, strikes_soft, strikes_hard, created_at, last_active_at, district, address_line, emergency_contact, avatar_url, taxi_association_name, taxi_association_verified")
       .eq("id", userId)
       .single(),
     service
       .from("driver_details")
-      .select("id, vehicle_make, vehicle_model, vehicle_year, vehicle_plate, verified, review_status, rejection_reason, license_url, insurance_url, id_document_url")
+      .select("id, vehicle_make, vehicle_model, vehicle_year, vehicle_plate, verified, review_status, rejection_reason, license_url, insurance_url, id_document_url, taxi_association_id, taxi_association_name, taxi_association_member_id, taxi_association_verified, taxi_association_verified_at, taxi_association_verified_by")
       .eq("id", userId)
       .maybeSingle(),
     service
@@ -1267,11 +1267,23 @@ async function handleUserDetail({ service }: AdminContext, payload: JsonRecord) 
     );
   }
 
+  let taxiAssociation = null;
+  const assocName = driver.data?.taxi_association_name ?? profile.data?.taxi_association_name;
+  if (assocName) {
+    const { data: assoc } = await service
+      .from("taxi_associations")
+      .select("id, name, district, address, phone, notes")
+      .eq("name", assocName)
+      .maybeSingle();
+    taxiAssociation = assoc ?? null;
+  }
+
   return {
     profile: profile.data ?? null,
     driver: driver.data ?? null,
     driverDocs: driverDocs.data ?? [],
     riderDocs: riderDocs.data ?? [],
+    taxiAssociation,
   };
 }
 
@@ -2201,6 +2213,33 @@ async function handleReviewDriverDocument(
 
   if (error) {
     throw new HttpError(500, error.message);
+  }
+
+  // If the document is taxi_association_card, update association verification status
+  const { data: doc } = await service
+    .from("driver_documents")
+    .select("document_type")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (doc?.document_type === "taxi_association_card") {
+    const isApproved = status === "approved";
+    await Promise.all([
+      service
+        .from("driver_details")
+        .update({
+          taxi_association_verified: isApproved,
+          taxi_association_verified_at: isApproved ? new Date().toISOString() : null,
+          taxi_association_verified_by: isApproved ? adminUserId : null,
+        })
+        .eq("id", profileId),
+      service
+        .from("profiles")
+        .update({
+          taxi_association_verified: isApproved,
+        })
+        .eq("id", profileId),
+    ]);
   }
 
   await insertAdminAction(service, {
