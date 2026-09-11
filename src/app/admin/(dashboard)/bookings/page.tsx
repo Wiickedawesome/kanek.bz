@@ -26,8 +26,6 @@ import {
   type BookingAuditItem,
 } from "@/lib/admin-backend";
 
-type Tab = "audit" | "raw-bookings" | "raw-contracts";
-
 type RawBooking = {
   id: string;
   post_id: string;
@@ -36,24 +34,161 @@ type RawBooking = {
   status: string;
   seats_booked: number;
   payment_method: string | null;
+  cancel_reason?: string | null;
+  cancelled_at?: string | null;
   created_at: string;
 };
 
 type RawContract = {
   id: string;
+  post_id?: string | null;
   booking_id: string | null;
   origin_address: string | null;
   dest_address: string | null;
   agreed_price_cents: number | null;
   status: string;
+  parties?: string[] | null;
+  departure_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
 };
 
+function synthesizeAuditItemsFromRaw(
+  bookings: RawBooking[],
+  contracts: RawContract[],
+  apiAuditItems: BookingAuditItem[] = []
+): BookingAuditItem[] {
+  if (apiAuditItems.length > 0) {
+    return apiAuditItems;
+  }
+
+  // Graceful fallback for existing mock/test data or while backend deployment is pending
+  return bookings.map((b) => {
+    const contract =
+      contracts.find((c) => c.booking_id === b.id) ||
+      contracts.find((c) => c.post_id === b.post_id);
+
+    const isDriver = b.role === "driver";
+    const isRider = b.role === "rider";
+
+    const driverId = isDriver
+      ? b.user_id
+      : contract?.parties?.find((p) => p !== b.user_id) || null;
+
+    const riderId = isRider
+      ? b.user_id
+      : contract?.parties?.find((p) => p !== b.user_id) || null;
+
+    return {
+      id: b.id,
+      bookingId: b.id,
+      contractId: contract?.id ?? null,
+      postId: b.post_id,
+      status: contract?.status ?? b.status,
+      bookingStatus: b.status,
+      contractStatus: contract?.status ?? null,
+      createdAt: b.created_at,
+      departureAt: contract?.departure_at ?? null,
+      completedAt: contract?.completed_at ?? null,
+      cancelledAt: b.cancelled_at ?? null,
+      cancelReason: b.cancel_reason ?? null,
+      seatsBooked: b.seats_booked ?? 1,
+      paymentMethod: b.payment_method ?? null,
+      agreedPriceCents: contract?.agreed_price_cents ?? null,
+      originAddress: contract?.origin_address ?? null,
+      destAddress: contract?.dest_address ?? null,
+      postTitle: null,
+      postType: null,
+      driver: driverId
+        ? {
+            id: driverId,
+            name: `Driver (${driverId.slice(0, 8)})`,
+            email: null,
+            phone: null,
+            avatarUrl: null,
+            ratingAvg: null,
+            punctualityPct: null,
+            accountStatus: null,
+            vehicle: null,
+          }
+        : null,
+      rider: riderId
+        ? {
+            id: riderId,
+            name: `Rider (${riderId.slice(0, 8)})`,
+            email: null,
+            phone: null,
+            avatarUrl: null,
+            ratingAvg: null,
+            punctualityPct: null,
+            emergencyContact: null,
+            accountStatus: null,
+          }
+        : null,
+      timeline: [
+        {
+          id: `booking-${b.id}`,
+          type: "booking_requested",
+          label: "Booking Created",
+          timestamp: b.created_at,
+          actorId: b.user_id,
+          actorName: `${isDriver ? "Driver" : "Rider"} (${b.user_id.slice(0, 8)})`,
+          actorRole: (isDriver ? "driver" : isRider ? "rider" : "system") as "driver" | "rider" | "system" | "admin",
+          note: `${b.seats_booked ?? 1} seat(s) booked (${b.status})`,
+        },
+        ...(contract
+          ? [
+              {
+                id: `contract-${contract.id}`,
+                type: "contract_formed",
+                label: "Contract Recorded",
+                timestamp: contract.created_at,
+                actorId: null,
+                actorName: null,
+                actorRole: "system" as const,
+                note: contract.agreed_price_cents
+                  ? `Agreed fare: $${(contract.agreed_price_cents / 100).toFixed(2)} BZD`
+                  : null,
+              },
+            ]
+          : []),
+        ...(b.status === "completed" || contract?.status === "completed"
+          ? [
+              {
+                id: `complete-${b.id}`,
+                type: "completed",
+                label: "Trip Completed",
+                timestamp: contract?.completed_at || b.created_at,
+                actorId: driverId,
+                actorName: driverId ? `Driver (${driverId.slice(0, 8)})` : null,
+                actorRole: "driver" as const,
+                note: null,
+              },
+            ]
+          : []),
+        ...(b.status === "cancelled"
+          ? [
+              {
+                id: `cancel-${b.id}`,
+                type: "cancelled",
+                label: "Booking Cancelled",
+                timestamp: b.cancelled_at || b.created_at,
+                actorId: null,
+                actorName: null,
+                actorRole: "system" as const,
+                note: b.cancel_reason ? `Reason: ${b.cancel_reason}` : "Cancelled",
+              },
+            ]
+          : []),
+      ],
+      ratings: [] as BookingAuditItem["ratings"],
+      flags: [] as BookingAuditItem["flags"],
+    };
+  });
+}
+
 export default function BookingsPage() {
-  const [tab, setTab] = useState<Tab>("audit");
   const [auditItems, setAuditItems] = useState<BookingAuditItem[]>([]);
-  const [rawBookings, setRawBookings] = useState<RawBooking[]>([]);
-  const [rawContracts, setRawContracts] = useState<RawContract[]>([]);
   const [selectedItem, setSelectedItem] = useState<BookingAuditItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -65,14 +200,15 @@ export default function BookingsPage() {
     setLoadError(null);
     try {
       const data = await getAdminBookingsData<RawBooking, RawContract>();
-      setAuditItems(data.auditItems ?? []);
-      setRawBookings(data.bookings ?? []);
-      setRawContracts(data.contracts ?? []);
+      const items = synthesizeAuditItemsFromRaw(
+        data.bookings ?? [],
+        data.contracts ?? [],
+        data.auditItems ?? []
+      );
+      setAuditItems(items);
     } catch (error) {
       setLoadError(getAdminActionErrorMessage(error));
       setAuditItems([]);
-      setRawBookings([]);
-      setRawContracts([]);
     } finally {
       setLoading(false);
     }
@@ -82,7 +218,7 @@ export default function BookingsPage() {
     void load();
   }, [load]);
 
-  /* ── Filtered Audit Items ── */
+  /* ── Filtered Rides / Bookings ── */
   const filteredAuditItems = useMemo(() => {
     return auditItems.filter((item) => {
       // Status filter
@@ -98,7 +234,6 @@ export default function BookingsPage() {
           s !== "rejected"
         )
           return false;
-        if (statusFilter === "disputed" && s !== "disputed" && item.flags.length === 0) return false;
       }
 
       // Search query
@@ -107,35 +242,42 @@ export default function BookingsPage() {
       const driverName = (item.driver?.name ?? "").toLowerCase();
       const driverPhone = (item.driver?.phone ?? "").toLowerCase();
       const driverPlate = (item.driver?.vehicle?.plate ?? "").toLowerCase();
+      const driverId = (item.driver?.id ?? "").toLowerCase();
       const riderName = (item.rider?.name ?? "").toLowerCase();
       const riderPhone = (item.rider?.phone ?? "").toLowerCase();
+      const riderId = (item.rider?.id ?? "").toLowerCase();
       const origin = (item.originAddress ?? "").toLowerCase();
       const dest = (item.destAddress ?? "").toLowerCase();
       const bookingId = (item.bookingId ?? "").toLowerCase();
       const contractId = (item.contractId ?? "").toLowerCase();
+      const postId = (item.postId ?? "").toLowerCase();
+      const paymentMethod = (item.paymentMethod ?? "").toLowerCase();
 
       return (
         driverName.includes(q) ||
         driverPhone.includes(q) ||
         driverPlate.includes(q) ||
+        driverId.includes(q) ||
         riderName.includes(q) ||
         riderPhone.includes(q) ||
+        riderId.includes(q) ||
         origin.includes(q) ||
         dest.includes(q) ||
         bookingId.includes(q) ||
-        contractId.includes(q)
+        contractId.includes(q) ||
+        postId.includes(q) ||
+        paymentMethod.includes(q)
       );
     });
   }, [auditItems, searchQuery, statusFilter]);
 
-  /* ── Summary Metrics ── */
+  /* ── Summary Metrics (Matching Exact App Lifecycle) ── */
   const metrics = useMemo(() => {
     const total = auditItems.length;
     let completed = 0;
     let inProgress = 0;
     let pending = 0;
     let cancelled = 0;
-    let disputed = 0;
 
     for (const item of auditItems) {
       const s = item.status.toLowerCase();
@@ -143,24 +285,20 @@ export default function BookingsPage() {
       else if (s === "active" || s === "confirmed") inProgress++;
       else if (s === "pending") pending++;
       else if (s === "cancelled" || s === "no_show" || s === "rejected") cancelled++;
-      if (s === "disputed" || item.flags.length > 0) disputed++;
     }
 
-    return { total, completed, inProgress, pending, cancelled, disputed };
+    return { total, completed, inProgress, pending, cancelled };
   }, [auditItems]);
 
   const formatCents = (cents: number | null) =>
     cents !== null ? `$${(cents / 100).toFixed(2)} BZD` : "—";
 
-  const getStatusBadge = (status: string, hasFlags = false) => {
+  const getStatusBadge = (status: string) => {
     const s = status.toLowerCase();
     let bg = "bg-muted text-muted-foreground";
-    let label = status.replace(/_/g, " ");
+    const label = status.replace(/_/g, " ");
 
-    if (hasFlags || s === "disputed") {
-      bg = "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
-      label = s === "disputed" ? "Disputed" : `${label} (Flagged)`;
-    } else if (s === "completed") {
+    if (s === "completed") {
       bg = "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
     } else if (s === "active" || s === "confirmed") {
       bg = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
@@ -211,14 +349,14 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* Top Metrics Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {/* Top Metrics Cards (Strictly App-Accurate: Total, In Progress, Completed, Pending, Cancelled) */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-lg border bg-card p-3 shadow-xs">
-          <div className="text-xs font-medium text-muted-foreground">Total Rides</div>
+          <div className="text-xs font-medium text-muted-foreground">Total Bookings</div>
           <div className="mt-1 text-2xl font-bold tracking-tight">{metrics.total}</div>
         </div>
         <div className="rounded-lg border bg-card p-3 shadow-xs">
-          <div className="text-xs font-medium text-blue-600 dark:text-blue-400">In Progress</div>
+          <div className="text-xs font-medium text-blue-600 dark:text-blue-400">In Progress / Confirmed</div>
           <div className="mt-1 text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
             {metrics.inProgress}
           </div>
@@ -241,290 +379,181 @@ export default function BookingsPage() {
             {metrics.cancelled}
           </div>
         </div>
-        <div className="rounded-lg border bg-card p-3 shadow-xs">
-          <div className="text-xs font-medium text-orange-600 dark:text-orange-400">Disputed</div>
-          <div className="mt-1 text-2xl font-bold tracking-tight text-orange-600 dark:text-orange-400">
-            {metrics.disputed}
-          </div>
-        </div>
       </div>
 
-      {/* Tabs & Controls */}
+      {/* Search & Filter Header (No Separate Tabs) */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex gap-1 rounded-lg border p-1 self-start">
-          <button
-            onClick={() => setTab("audit")}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-              tab === "audit"
-                ? "bg-accent-green text-white font-medium"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            Auditable Rides ({auditItems.length})
-          </button>
-          <button
-            onClick={() => setTab("raw-bookings")}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-              tab === "raw-bookings"
-                ? "bg-accent-green text-white font-medium"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            Raw Bookings ({rawBookings.length})
-          </button>
-          <button
-            onClick={() => setTab("raw-contracts")}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-              tab === "raw-contracts"
-                ? "bg-accent-green text-white font-medium"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            Raw Contracts ({rawContracts.length})
-          </button>
+        <div className="text-sm font-semibold text-foreground">
+          All Bookings ({filteredAuditItems.length})
         </div>
 
-        {tab === "audit" && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search driver, rider, route, ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md border border-input bg-background pl-8 pr-7 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="all">All Statuses</option>
-              <option value="completed">Completed</option>
-              <option value="in_progress">In Progress / Active</option>
-              <option value="pending">Pending</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="disputed">Disputed / Flagged</option>
-            </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 sm:w-72">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search ID, driver, rider, route, payment..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-input bg-background pl-8 pr-7 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded transition-colors"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-        )}
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">All Statuses</option>
+            <option value="in_progress">In Progress / Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="pending">Pending</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
       </div>
 
+      {/* Unified Auditable Bookings Table */}
       {loading ? (
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-16 animate-pulse rounded-lg border bg-muted/40" />
           ))}
         </div>
       ) : (
-        <>
-          {/* AUDITABLE RIDES VIEW */}
-          {tab === "audit" && (
-            <div className="overflow-x-auto rounded-lg border bg-card shadow-xs">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="px-3 py-2.5 text-left font-semibold">Ride ID</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Driver</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Rider</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Route</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Fare & Seats</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Status</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Date</th>
-                    <th className="px-3 py-2.5 text-right font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {filteredAuditItems.map((item) => {
-                    const isSelected = selectedItem?.id === item.id;
-                    const hasFlags = item.flags.length > 0;
-                    return (
-                      <tr
-                        key={item.id}
-                        onClick={() => setSelectedItem(item)}
-                        className={`cursor-pointer transition-colors hover:bg-muted/30 ${
-                          isSelected ? "bg-muted/50" : ""
-                        }`}
-                      >
-                        <td className="px-3 py-3">
-                          <div className="font-mono text-xs font-medium text-foreground">
-                            {item.bookingId ? item.bookingId.slice(0, 8) : item.contractId?.slice(0, 8)}
-                          </div>
-                          {item.contractId && item.bookingId && (
-                            <div className="text-[10px] text-muted-foreground font-mono">
-                              C: {item.contractId.slice(0, 8)}
-                            </div>
+        <div className="overflow-x-auto rounded-lg border bg-card shadow-xs">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-3 py-2.5 text-left font-semibold">Booking ID</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Driver</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Rider</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Route</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Fare & Seats</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Payment</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Status</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Created</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filteredAuditItems.map((item) => {
+                const isSelected = selectedItem?.id === item.id;
+                return (
+                  <tr
+                    key={item.id}
+                    onClick={() => setSelectedItem(item)}
+                    className={`cursor-pointer transition-colors hover:bg-muted/30 ${
+                      isSelected ? "bg-muted/50" : ""
+                    }`}
+                  >
+                    <td className="px-3 py-3">
+                      <div className="font-mono text-xs font-medium text-foreground">
+                        {item.bookingId ? item.bookingId.slice(0, 8) : item.contractId?.slice(0, 8)}
+                      </div>
+                      {item.postId && (
+                        <div className="text-[10px] text-muted-foreground font-mono">
+                          Post: {item.postId.slice(0, 8)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {item.driver ? (
+                        <div>
+                          <div className="font-medium text-foreground">{item.driver.name}</div>
+                          {item.driver.phone && (
+                            <div className="text-xs text-muted-foreground">{item.driver.phone}</div>
                           )}
-                        </td>
-                        <td className="px-3 py-3">
-                          {item.driver ? (
-                            <div>
-                              <div className="font-medium text-foreground">{item.driver.name}</div>
-                              {item.driver.phone && (
-                                <div className="text-xs text-muted-foreground">{item.driver.phone}</div>
-                              )}
-                              {item.driver.vehicle?.plate && (
-                                <span className="inline-block mt-0.5 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium">
-                                  {item.driver.vehicle.plate}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Unassigned / None</span>
+                          {item.driver.vehicle?.plate && (
+                            <span className="inline-block mt-0.5 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium">
+                              {item.driver.vehicle.plate}
+                            </span>
                           )}
-                        </td>
-                        <td className="px-3 py-3">
-                          {item.rider ? (
-                            <div>
-                              <div className="font-medium text-foreground">{item.rider.name}</div>
-                              {item.rider.phone && (
-                                <div className="text-xs text-muted-foreground">{item.rider.phone}</div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Unknown</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {item.rider ? (
+                        <div>
+                          <div className="font-medium text-foreground">{item.rider.name}</div>
+                          {item.rider.phone && (
+                            <div className="text-xs text-muted-foreground">{item.rider.phone}</div>
                           )}
-                        </td>
-                        <td className="px-3 py-3 max-w-[220px]">
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Unknown</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 max-w-[200px]">
+                      {item.originAddress || item.destAddress ? (
+                        <>
                           <div className="truncate font-medium text-foreground" title={item.originAddress ?? ""}>
                             {item.originAddress ?? "Origin"}
                           </div>
                           <div className="truncate text-xs text-muted-foreground" title={item.destAddress ?? ""}>
                             &darr; {item.destAddress ?? "Destination"}
                           </div>
-                        </td>
-                        <td className="px-3 py-3 tabular-nums">
-                          <div className="font-semibold text-foreground">
-                            {formatCents(item.agreedPriceCents)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {item.seatsBooked} seat{item.seatsBooked > 1 ? "s" : ""}{" "}
-                            {item.paymentMethod && (
-                              <span className="uppercase text-[10px] font-medium bg-muted px-1 py-0.2 rounded">
-                                {item.paymentMethod}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          {getStatusBadge(item.status, hasFlags)}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-muted-foreground tabular-nums">
-                          <div>{new Date(item.createdAt).toLocaleDateString()}</div>
-                          <div>{new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-                        </td>
-                        <td className="px-3 py-3 text-right">
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-accent-blue hover:underline">
-                            Audit <ArrowRight className="h-3.5 w-3.5" />
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {filteredAuditItems.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                        {searchQuery
-                          ? "No rides match your search criteria."
-                          : "No ride audit records found."}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* RAW BOOKINGS TAB */}
-          {tab === "raw-bookings" && (
-            <div className="overflow-x-auto rounded-lg border bg-card">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-xs uppercase text-muted-foreground">
-                    <th className="px-3 py-2 text-left font-medium">ID</th>
-                    <th className="px-3 py-2 text-left font-medium">Post ID</th>
-                    <th className="px-3 py-2 text-left font-medium">User ID</th>
-                    <th className="px-3 py-2 text-left font-medium">Role</th>
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Seats</th>
-                    <th className="px-3 py-2 text-left font-medium">Payment</th>
-                    <th className="px-3 py-2 text-left font-medium">Created</th>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Route Details in Contract</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      <div className="font-semibold text-foreground">
+                        {formatCents(item.agreedPriceCents)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.seatsBooked} seat{item.seatsBooked > 1 ? "s" : ""}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 capitalize">
+                      <span className="text-xs rounded bg-muted px-1.5 py-0.5 font-medium">
+                        {item.paymentMethod ?? "cash"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      {getStatusBadge(item.status)}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground tabular-nums">
+                      <div>{new Date(item.createdAt).toLocaleDateString()}</div>
+                      <div>
+                        {new Date(item.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-accent-blue hover:underline">
+                        Audit <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rawBookings.map((b) => (
-                    <tr key={b.id} className="hover:bg-muted/30">
-                      <td className="px-3 py-2 font-mono text-xs">{b.id.slice(0, 8)}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{b.post_id?.slice(0, 8)}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{b.user_id?.slice(0, 8)}</td>
-                      <td className="px-3 py-2 capitalize">{b.role}</td>
-                      <td className="px-3 py-2">{getStatusBadge(b.status)}</td>
-                      <td className="px-3 py-2 tabular-nums">{b.seats_booked}</td>
-                      <td className="px-3 py-2">{b.payment_method ?? "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                  {rawBookings.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
-                        No raw bookings found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* RAW CONTRACTS TAB */}
-          {tab === "raw-contracts" && (
-            <div className="overflow-x-auto rounded-lg border bg-card">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-xs uppercase text-muted-foreground">
-                    <th className="px-3 py-2 text-left font-medium">ID</th>
-                    <th className="px-3 py-2 text-left font-medium">Booking ID</th>
-                    <th className="px-3 py-2 text-left font-medium">Route</th>
-                    <th className="px-3 py-2 text-left font-medium">Price</th>
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Created</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rawContracts.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/30">
-                      <td className="px-3 py-2 font-mono text-xs">{c.id.slice(0, 8)}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{c.booking_id ? c.booking_id.slice(0, 8) : "—"}</td>
-                      <td className="px-3 py-2 max-w-[200px] truncate">{c.origin_address ?? "?"} &rarr; {c.dest_address ?? "?"}</td>
-                      <td className="px-3 py-2 tabular-nums">{formatCents(c.agreed_price_cents)}</td>
-                      <td className="px-3 py-2">{getStatusBadge(c.status)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{new Date(c.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                  {rawContracts.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
-                        No raw contracts found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+                );
+              })}
+              {filteredAuditItems.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                    {searchQuery
+                      ? "No bookings match your search criteria."
+                      : "No bookings found."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* ════════════════════════════════════════════════════════
@@ -547,7 +576,7 @@ export default function BookingsPage() {
                     <h3 className="text-lg font-bold text-foreground">
                       Ride Audit Record
                     </h3>
-                    {getStatusBadge(selectedItem.status, selectedItem.flags.length > 0)}
+                    {getStatusBadge(selectedItem.status)}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 font-mono">
                     <span>Booking: {selectedItem.bookingId ?? "N/A"}</span>
@@ -568,25 +597,6 @@ export default function BookingsPage() {
 
             {/* Modal Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Dispute / Flags Banner */}
-              {selectedItem.flags.length > 0 && (
-                <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 space-y-2 text-orange-950 dark:text-orange-200">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <ShieldAlert className="h-5 w-5 text-orange-600" />
-                    <span>Active Dispute / Flag Registered for this Ride</span>
-                  </div>
-                  {selectedItem.flags.map((f) => (
-                    <div key={f.id} className="text-xs space-y-1 bg-background/60 p-2.5 rounded border">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-foreground capitalize">Reason: {f.reason.replace(/_/g, " ")}</span>
-                        <span className="text-muted-foreground">{new Date(f.createdAt).toLocaleString()}</span>
-                      </div>
-                      {f.description && <p className="text-muted-foreground italic">&ldquo;{f.description}&rdquo;</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Cancellation Alert */}
               {(selectedItem.status === "cancelled" || selectedItem.cancelledAt) && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 space-y-1 text-destructive">
@@ -637,8 +647,17 @@ export default function BookingsPage() {
                         <div className="text-sm font-semibold text-foreground">
                           {selectedItem.driver.name}
                         </div>
-                        <div className="text-muted-foreground">{selectedItem.driver.email ?? "No email"}</div>
-                        <div className="text-muted-foreground">{selectedItem.driver.phone ?? "No phone"}</div>
+                        {selectedItem.driver.email && (
+                          <div className="text-muted-foreground">{selectedItem.driver.email}</div>
+                        )}
+                        {selectedItem.driver.phone && (
+                          <div className="text-muted-foreground">{selectedItem.driver.phone}</div>
+                        )}
+                        {!selectedItem.driver.email && !selectedItem.driver.phone && (
+                          <div className="text-muted-foreground font-mono text-[11px]">
+                            ID: {selectedItem.driver.id}
+                          </div>
+                        )}
                       </div>
 
                       {/* Vehicle specs */}
@@ -664,7 +683,7 @@ export default function BookingsPage() {
                             </div>
                           </div>
                         ) : (
-                          <p className="text-muted-foreground italic">No vehicle details registered.</p>
+                          <p className="text-muted-foreground italic">No registered vehicle info on this record.</p>
                         )}
                       </div>
 
@@ -673,12 +692,15 @@ export default function BookingsPage() {
                         <div className="flex items-center gap-1">
                           <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
                           <span className="font-medium text-foreground">
-                            {selectedItem.driver.ratingAvg?.toFixed(1) ?? "New"}
+                            {selectedItem.driver.ratingAvg !== null && selectedItem.driver.ratingAvg !== undefined
+                              ? selectedItem.driver.ratingAvg.toFixed(1)
+                              : "New"}
                           </span>
                         </div>
-                        {selectedItem.driver.punctualityPct !== null && (
-                          <div>Punctuality: {selectedItem.driver.punctualityPct}%</div>
-                        )}
+                        {selectedItem.driver.punctualityPct !== null &&
+                          selectedItem.driver.punctualityPct !== undefined && (
+                            <div>Punctuality: {selectedItem.driver.punctualityPct}%</div>
+                          )}
                       </div>
                     </div>
                   ) : (
@@ -713,8 +735,17 @@ export default function BookingsPage() {
                         <div className="text-sm font-semibold text-foreground">
                           {selectedItem.rider.name}
                         </div>
-                        <div className="text-muted-foreground">{selectedItem.rider.email ?? "No email"}</div>
-                        <div className="text-muted-foreground">{selectedItem.rider.phone ?? "No phone"}</div>
+                        {selectedItem.rider.email && (
+                          <div className="text-muted-foreground">{selectedItem.rider.email}</div>
+                        )}
+                        {selectedItem.rider.phone && (
+                          <div className="text-muted-foreground">{selectedItem.rider.phone}</div>
+                        )}
+                        {!selectedItem.rider.email && !selectedItem.rider.phone && (
+                          <div className="text-muted-foreground font-mono text-[11px]">
+                            ID: {selectedItem.rider.id}
+                          </div>
+                        )}
                       </div>
 
                       <div className="rounded border bg-card p-2.5 space-y-1 mt-2">
@@ -732,7 +763,9 @@ export default function BookingsPage() {
                         <div className="flex items-center gap-1">
                           <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
                           <span className="font-medium text-foreground">
-                            {selectedItem.rider.ratingAvg?.toFixed(1) ?? "New"}
+                            {selectedItem.rider.ratingAvg !== null && selectedItem.rider.ratingAvg !== undefined
+                              ? selectedItem.rider.ratingAvg.toFixed(1)
+                              : "New"}
                           </span>
                         </div>
                         {selectedItem.rider.accountStatus && (
@@ -909,6 +942,25 @@ export default function BookingsPage() {
                 )}
               </div>
 
+              {/* Safety Flags Section (Only if flags exist) */}
+              {selectedItem.flags.length > 0 && (
+                <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 space-y-2 text-orange-950 dark:text-orange-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <ShieldAlert className="h-5 w-5 text-orange-600" />
+                    <span>Safety Report / Flag Associated with this Ride</span>
+                  </div>
+                  {selectedItem.flags.map((f) => (
+                    <div key={f.id} className="text-xs space-y-1 bg-background/60 p-2.5 rounded border">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-foreground capitalize">Reason: {f.reason.replace(/_/g, " ")}</span>
+                        <span className="text-muted-foreground">{new Date(f.createdAt).toLocaleString()}</span>
+                      </div>
+                      {f.description && <p className="text-muted-foreground italic">&ldquo;{f.description}&rdquo;</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Privacy Notice */}
               <div className="rounded border border-border/40 bg-muted/20 p-3 text-[11px] text-muted-foreground text-center">
                 In-app chat transcripts between passenger and driver are private and excluded from audit records in compliance with user privacy standards.
@@ -930,3 +982,4 @@ export default function BookingsPage() {
     </div>
   );
 }
+
