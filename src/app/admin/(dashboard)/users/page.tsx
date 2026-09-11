@@ -3,16 +3,28 @@
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
+  declineAdminAccount,
   getAdminActionErrorMessage,
   getAdminUserDetail,
   getAdminUsersData,
   isAdminBackendConfigured,
+  processAdminOnboardingReminders,
   resolveAdminDocumentUrl,
   reviewAdminDriverApplication,
   reviewAdminDriverDocument,
   reviewAdminRiderDocument,
+  sendAdminUserReminder,
   updateAdminAccountStatus,
 } from "@/lib/admin-backend";
+
+const DECLINE_REASONS = [
+  "Driver's License not approved (expired, unreadable, or invalid class)",
+  "Vehicle Insurance not approved (expired, invalid policy, or name mismatch)",
+  "Vehicle Registration / Certificate not approved (expired, plate mismatch, or unreadable)",
+  "Government-Issued Photo ID not approved (blurry photo, expired, or invalid document)",
+  "Vehicle details or photos not compliant with safety standards",
+  "Documentation incomplete or illegible",
+];
 
 type Profile = {
   id: string;
@@ -70,6 +82,22 @@ type RiderDocument = {
 
 type Tab = "all" | "drivers" | "pending-docs";
 
+function getUserDisplayName(profile?: {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  id?: string;
+} | null) {
+  if (!profile) return "Unknown User";
+  const name = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim();
+  if (name) return name;
+  if (profile.email) return profile.email;
+  if (profile.phone) return profile.phone;
+  if (profile.id) return `User ${profile.id.slice(0, 8)}`;
+  return "Unnamed User";
+}
+
 export default function UsersPage() {
   return (
     <Suspense
@@ -103,8 +131,17 @@ function UsersPageInner() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [documentLoading, setDocumentLoading] = useState<string | null>(null);
+  const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
+  const [selectedDeclineReasons, setSelectedDeclineReasons] = useState<string[]>([]);
+  const [declineCustomNotes, setDeclineCustomNotes] = useState("");
+  const [declineSubmitting, setDeclineSubmitting] = useState(false);
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [sweepLoading, setSweepLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const adminOpsEnabled = isAdminBackendConfigured();
 
   /* ── Detail-view state (loaded when viewUserId is set) ── */
@@ -180,15 +217,117 @@ function UsersPageInner() {
     const label = status === "suspended" ? "suspend" : "reactivate";
     if (!confirm(`Are you sure you want to ${label} this user?`)) return;
     setActionError(null);
+    setActionSuccess(null);
     setActionLoading("account");
     try {
       await updateAdminAccountStatus(userId, status);
+      setActionSuccess(`User account status updated to ${status}.`);
       if (viewUserId) await loadDetail(viewUserId);
       else await load();
     } catch (error) {
       setActionError(getAdminActionErrorMessage(error));
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleOpenDeclineDialog = () => {
+    setSelectedDeclineReasons([]);
+    setDeclineCustomNotes("");
+    setActionError(null);
+    setActionSuccess(null);
+    setDeclineDialogOpen(true);
+  };
+
+  const handleToggleDeclineReason = (reason: string) => {
+    setSelectedDeclineReasons((prev) =>
+      prev.includes(reason) ? prev.filter((r) => r !== reason) : [...prev, reason]
+    );
+  };
+
+  const handleConfirmDecline = async () => {
+    if (!detailProfile) return;
+    if (selectedDeclineReasons.length === 0 && !declineCustomNotes.trim()) {
+      setActionError("Please select at least one decline reason or provide reviewer notes.");
+      return;
+    }
+
+    setActionError(null);
+    setActionSuccess(null);
+    setDeclineSubmitting(true);
+
+    try {
+      const result = await declineAdminAccount(
+        detailProfile.id,
+        selectedDeclineReasons,
+        declineCustomNotes.trim() || undefined
+      );
+
+      setDeclineDialogOpen(false);
+
+      if (result.emailSent) {
+        setActionSuccess(
+          `Account declined (status restricted). Notification email sent to ${detailProfile.email}.`
+        );
+      } else {
+        setActionSuccess(
+          `Account declined (status restricted). Note: ${
+            result.emailError || "Notification email was not sent."
+          }`
+        );
+      }
+
+      if (viewUserId) {
+        await loadDetail(viewUserId);
+      } else {
+        await load();
+      }
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setDeclineSubmitting(false);
+    }
+  };
+
+  const handleSendReminder = async (userId: string) => {
+    setActionError(null);
+    setActionSuccess(null);
+    setReminderLoading(true);
+    try {
+      const res = await sendAdminUserReminder(userId);
+      const channels = [];
+      if (res.emailSent) channels.push("Email");
+      if (res.pushSent) channels.push("Push Notification");
+      channels.push("In-App Notification");
+      setActionSuccess(
+        `Reminder sent successfully via ${channels.join(", ")} for missing document(s): ${res.missingDocs.join(", ")}.`
+      );
+    } catch (error) {
+      setActionError(getAdminActionErrorMessage(error));
+    } finally {
+      setReminderLoading(false);
+    }
+  };
+
+  const handleRunSweep = async () => {
+    if (
+      !confirm(
+        "Run automated reminder sweep now? This will scan all pending accounts and dispatch 3-day and 15-day reminders to users with missing documents."
+      )
+    )
+      return;
+    setSweepLoading(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const res = await processAdminOnboardingReminders();
+      setActionSuccess(
+        `Reminder sweep complete: scanned ${res.scannedCount} pending user(s), sent ${res.day3Sent} 3-day reminder(s), and ${res.day15Sent} 15-day reminder(s).`
+      );
+    } catch (err) {
+      setActionError(getAdminActionErrorMessage(err));
+    } finally {
+      setSweepLoading(false);
     }
   };
 
@@ -347,6 +486,12 @@ function UsersPageInner() {
           </div>
         )}
 
+        {actionSuccess && (
+          <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-300">
+            {actionSuccess}
+          </div>
+        )}
+
         {/* Profile header */}
         <div className="rounded-lg border bg-card p-6 space-y-4">
           <div className="flex items-start justify-between">
@@ -405,15 +550,36 @@ function UsersPageInner() {
             />
           </div>
 
-          <div className="flex gap-2 pt-2 border-t flex-wrap">
-            {detailProfile.account_status === "pending" && (
+          <div className="flex gap-2 pt-2 border-t flex-wrap items-center">
+            {(detailProfile.account_status === "pending" || detailProfile.account_status === "restricted") && (
               <ActionButton
                 variant="default"
                 loading={actionLoading === "account"}
                 disabled={!adminOpsEnabled}
                 onClick={() => updateAccountStatus(detailProfile.id, "active")}
               >
-                Approve Account
+                {detailProfile.account_status === "restricted" ? "Re-Approve Account" : "Approve Account"}
+              </ActionButton>
+            )}
+            {detailProfile.account_status === "pending" && (
+              <ActionButton
+                variant="warning"
+                loading={declineSubmitting}
+                disabled={!adminOpsEnabled}
+                onClick={handleOpenDeclineDialog}
+              >
+                Decline Account
+              </ActionButton>
+            )}
+            {(detailProfile.account_status === "pending" ||
+              (detailProfile.role === "driver" && !detailDriver)) && (
+              <ActionButton
+                variant="info"
+                loading={reminderLoading}
+                disabled={!adminOpsEnabled}
+                onClick={() => handleSendReminder(detailProfile.id)}
+              >
+                Send Reminder
               </ActionButton>
             )}
             {detailProfile.account_status !== "suspended" ? (
@@ -437,6 +603,22 @@ function UsersPageInner() {
             )}
           </div>
         </div>
+
+        {/* Driver details prompt when driver hasn't submitted application */}
+        {detailProfile.role === "driver" && !detailDriver && (
+          <div className="rounded-lg border bg-card p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Driver Details</h3>
+              <StatusBadge value="pending_setup" />
+            </div>
+            <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
+              <p className="font-semibold">No vehicle details or driver documents submitted yet.</p>
+              <p className="text-xs mt-1 text-amber-700 dark:text-amber-400">
+                This user has the &quot;driver&quot; role, but has not completed vehicle registration and document upload in the mobile app.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Driver details */}
         {detailDriver && (
@@ -483,14 +665,14 @@ function UsersPageInner() {
                   onPreview={(documentRef) => previewDocument(documentRef, "driver-insurance")}
                 />
                 <DocCard
-                  label="ID Document"
+                  label="Vehicle Registration"
                   documentRef={
                     detailDriver.id_document_url ??
                     detailDriverDocs.find((d) => d.document_type === "vehicle_registration")?.document_url ?? null
                   }
                   disabled={!adminOpsEnabled}
-                  loading={documentLoading === "driver-id"}
-                  onPreview={(documentRef) => previewDocument(documentRef, "driver-id")}
+                  loading={documentLoading === "driver-reg"}
+                  onPreview={(documentRef) => previewDocument(documentRef, "driver-reg")}
                 />
               </div>
             </div>
@@ -502,15 +684,18 @@ function UsersPageInner() {
             )}
 
             {detailDriver.review_status === "pending" && (() => {
-              const allDocsApproved =
-                detailDriverDocs.length > 0 &&
-                detailDriverDocs.every((d) => d.review_status === "approved");
+              const hasDocs = detailDriverDocs.length > 0;
+              const allDocsApproved = hasDocs
+                ? detailDriverDocs.every((d) => d.review_status === "approved")
+                : Boolean(detailDriver.license_url && detailDriver.insurance_url);
+              const approvedCount = detailDriverDocs.filter((d) => d.review_status === "approved").length;
+
               return (
                 <div className="space-y-2 pt-2 border-t">
-                  {!allDocsApproved && (
+                  {!allDocsApproved && hasDocs && (
                     <p className="text-xs text-yellow-600 dark:text-yellow-400">
                       All driver documents must be approved before the driver can be approved.
-                      ({detailDriverDocs.filter((d) => d.review_status === "approved").length}/{detailDriverDocs.length} approved)
+                      ({approvedCount}/{detailDriverDocs.length} approved)
                     </p>
                   )}
                   <div className="flex gap-2">
@@ -745,6 +930,130 @@ function UsersPageInner() {
             </div>
           </div>
         )}
+
+        {/* Decline Dialog Modal */}
+        {declineDialogOpen && detailProfile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="decline-dialog-title"
+              className="w-full max-w-lg rounded-xl border bg-card p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto text-card-foreground"
+            >
+              <div className="flex items-start justify-between border-b pb-4">
+                <div>
+                  <h3 id="decline-dialog-title" className="text-lg font-semibold text-foreground">
+                    Decline Account Verification
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Applicant:{" "}
+                    <span className="font-medium text-foreground">
+                      {detailProfile.first_name} {detailProfile.last_name}
+                    </span>{" "}
+                    ({detailProfile.email ?? "No email on file"}) &bull; Role:{" "}
+                    <span className="capitalize">{detailProfile.role}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !declineSubmitting && setDeclineDialogOpen(false)}
+                  className="text-muted-foreground hover:text-foreground text-sm p-1 rounded hover:bg-muted transition-colors"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 text-sm">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Select Reason(s) for Decline
+                  </label>
+                  <div className="space-y-2">
+                    {DECLINE_REASONS.map((reason) => {
+                      const isChecked = selectedDeclineReasons.includes(reason);
+                      return (
+                        <label
+                          key={reason}
+                          className={`flex items-start gap-3 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                            isChecked
+                              ? "border-amber-500/50 bg-amber-500/10 text-foreground font-medium"
+                              : "border-border hover:bg-muted/40 text-muted-foreground"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleDeclineReason(reason)}
+                            className="mt-0.5 rounded border-muted-foreground text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="leading-snug">{reason}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="decline-notes"
+                    className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5"
+                  >
+                    Additional Reviewer Notes / Instructions (Optional)
+                  </label>
+                  <textarea
+                    id="decline-notes"
+                    rows={3}
+                    value={declineCustomNotes}
+                    onChange={(e) => setDeclineCustomNotes(e.target.value)}
+                    placeholder="Provide specific notes or instructions for the user..."
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                  <p className="font-semibold">What happens next:</p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-amber-700 dark:text-amber-400">
+                    <li>User account status will be set to <strong>Restricted</strong>.</li>
+                    {detailProfile.email ? (
+                      <li>
+                        An official branded email detailing the selected reason(s) will be dispatched to{" "}
+                        <strong>{detailProfile.email}</strong> via Resend.
+                      </li>
+                    ) : (
+                      <li className="text-destructive font-medium">
+                        No email on file. Account will be restricted without email delivery.
+                      </li>
+                    )}
+                    <li>The user will see instructions to re-upload documents in the mobile app.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  disabled={declineSubmitting}
+                  onClick={() => setDeclineDialogOpen(false)}
+                  className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    declineSubmitting ||
+                    (!selectedDeclineReasons.length && !declineCustomNotes.trim())
+                  }
+                  onClick={handleConfirmDecline}
+                  className="rounded-md bg-amber-600 text-white hover:bg-amber-700 px-4 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {declineSubmitting ? "Declining…" : "Confirm Decline & Send Notification"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -752,9 +1061,35 @@ function UsersPageInner() {
   /* ════════════════════════════════════════════════════════
      LIST VIEW — default (no ?view param)
      ════════════════════════════════════════════════════════ */
+  const driverProfiles = profiles.filter(
+    (p) => p.role === "driver" || driverDetails.some((dd) => dd.id === p.id)
+  );
+
+  const filteredProfiles = profiles.filter((p) => {
+    if (statusFilter !== "all" && p.account_status !== statusFilter) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.toLowerCase();
+    const email = (p.email ?? "").toLowerCase();
+    const phone = (p.phone ?? "").toLowerCase();
+    return name.includes(q) || email.includes(q) || phone.includes(q);
+  });
+
+  const filteredDrivers = driverProfiles.filter((p) => {
+    if (statusFilter !== "all" && p.account_status !== statusFilter) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.toLowerCase();
+    const email = (p.email ?? "").toLowerCase();
+    const phone = (p.phone ?? "").toLowerCase();
+    const dd = driverDetails.find((d) => d.id === p.id);
+    const vehicle = `${dd?.vehicle_make ?? ""} ${dd?.vehicle_model ?? ""} ${dd?.vehicle_plate ?? ""}`.toLowerCase();
+    return name.includes(q) || email.includes(q) || phone.includes(q) || vehicle.includes(q);
+  });
+
   const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: "all", label: "All Users", count: profiles.length },
-    { key: "drivers", label: "Drivers", count: driverDetails.length },
+    { key: "all", label: "All Users", count: filteredProfiles.length },
+    { key: "drivers", label: "Drivers", count: filteredDrivers.length },
     {
       key: "pending-docs",
       label: "Pending Documents",
@@ -778,24 +1113,73 @@ function UsersPageInner() {
           {actionError}
         </div>
       )}
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-lg border p-1">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-              tab === t.key
-                ? "bg-accent-green text-white"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {t.label}
-            {t.count !== undefined && (
-              <span className="ml-1.5 text-xs opacity-70">({t.count})</span>
+      {actionSuccess && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-300">
+          {actionSuccess}
+        </div>
+      )}
+
+      {/* Tabs & Search controls */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-1 rounded-lg border p-1 self-start">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                tab === t.key
+                  ? "bg-accent-green text-white"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {t.label}
+              {t.count !== undefined && (
+                <span className="ml-1.5 text-xs opacity-70">({t.count})</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 sm:w-64">
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
             )}
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="restricted">Restricted</option>
+            <option value="suspended">Suspended</option>
+          </select>
+          <button
+            onClick={handleRunSweep}
+            disabled={sweepLoading || !adminOpsEnabled}
+            className="rounded-md border border-input bg-background hover:bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            title="Scan pending accounts and send 3-day / 15-day reminders for missing docs"
+          >
+            <span>🔔</span>
+            <span>{sweepLoading ? "Running Sweep..." : "Run Reminder Sweep"}</span>
           </button>
-        ))}
+        </div>
       </div>
 
       {loading ? (
@@ -820,32 +1204,40 @@ function UsersPageInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.map((p) => (
-                    <tr
-                      key={p.id}
-                      onClick={() => navigateToUser(p.id)}
-                      className="cursor-pointer border-b transition-colors hover:bg-muted/30"
-                    >
-                      <td className="px-3 py-2">
-                        {p.first_name} {p.last_name}
-                        <div className="text-xs text-muted-foreground">
-                          {p.email ?? p.phone}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <StatusBadge value={p.role} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <StatusBadge value={p.account_status} />
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {p.strikes_soft}s / {p.strikes_hard}h
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {new Date(p.created_at).toLocaleDateString()}
+                  {filteredProfiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                        No users match the current filter.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredProfiles.map((p) => (
+                      <tr
+                        key={p.id}
+                        onClick={() => navigateToUser(p.id)}
+                        className="cursor-pointer border-b transition-colors hover:bg-muted/30"
+                      >
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-foreground">{getUserDisplayName(p)}</div>
+                          {(p.first_name || p.last_name) && (p.email || p.phone) ? (
+                            <div className="text-xs text-muted-foreground">{p.email ?? p.phone}</div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusBadge value={p.role} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusBadge value={p.account_status} />
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">
+                          {p.strikes_soft}s / {p.strikes_hard}h
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {new Date(p.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -864,34 +1256,47 @@ function UsersPageInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {driverDetails.map((dd) => {
-                    const profile = profiles.find((p) => p.id === dd.id);
-                    return (
-                      <tr
-                        key={dd.id}
-                        onClick={() => navigateToUser(dd.id)}
-                        className="cursor-pointer border-b transition-colors hover:bg-muted/30"
-                      >
-                        <td className="px-3 py-2">
-                          {profile
-                            ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`
-                            : dd.id.slice(0, 8)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {dd.vehicle_year} {dd.vehicle_make} {dd.vehicle_model}
-                          <div className="text-xs text-muted-foreground">
-                            {dd.vehicle_plate}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <StatusBadge value={dd.review_status} />
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="text-xs text-accent-blue">View details →</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredDrivers.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                        No drivers match the current filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDrivers.map((p) => {
+                      const dd = driverDetails.find((d) => d.id === p.id);
+                      const vehicleText = dd
+                        ? [dd.vehicle_year, dd.vehicle_make, dd.vehicle_model].filter(Boolean).join(" ") || "Vehicle on file"
+                        : "Not submitted";
+                      const plateText = dd?.vehicle_plate ?? "No plate";
+                      const reviewStatus = dd ? dd.review_status : "pending_setup";
+
+                      return (
+                        <tr
+                          key={p.id}
+                          onClick={() => navigateToUser(p.id)}
+                          className="cursor-pointer border-b transition-colors hover:bg-muted/30"
+                        >
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-foreground">{getUserDisplayName(p)}</div>
+                            {(p.first_name || p.last_name) && (p.email || p.phone) ? (
+                              <div className="text-xs text-muted-foreground">{p.email ?? p.phone}</div>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div>{vehicleText}</div>
+                            <div className="text-xs text-muted-foreground">{plateText}</div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <StatusBadge value={reviewStatus} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="text-xs text-accent-blue">View details →</span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -924,9 +1329,8 @@ function UsersPageInner() {
                               className="cursor-pointer border-b transition-colors hover:bg-muted/30"
                             >
                               <td className="px-3 py-2">
-                                {profile
-                                  ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`
-                                  : doc.profile_id.slice(0, 8)}
+                                <div className="font-medium text-foreground">{getUserDisplayName(profile)}</div>
+                                {profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}
                               </td>
                               <td className="px-3 py-2">
                                 <StatusBadge value={doc.document_type} />
@@ -970,9 +1374,8 @@ function UsersPageInner() {
                               className="cursor-pointer border-b transition-colors hover:bg-muted/30"
                             >
                               <td className="px-3 py-2">
-                                {profile
-                                  ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`
-                                  : doc.user_id.slice(0, 8)}
+                                <div className="font-medium text-foreground">{getUserDisplayName(profile)}</div>
+                                {profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}
                               </td>
                               <td className="px-3 py-2">
                                 <span className="text-xs text-accent-blue">Review →</span>
@@ -1043,7 +1446,8 @@ function DocCard({
   );
 }
 
-function StatusBadge({ value }: { value: string }) {
+function StatusBadge({ value }: { value?: string | null }) {
+  const safeValue = value || "unknown";
   const colors: Record<string, string> = {
     admin: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
     driver: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
@@ -1055,14 +1459,18 @@ function StatusBadge({ value }: { value: string }) {
     dormant: "bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400",
     approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
     rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+    pending_setup: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    drivers_license: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    vehicle_insurance: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    vehicle_registration: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
   };
   return (
     <span
       className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-        colors[value] ?? "bg-muted text-muted-foreground"
+        colors[safeValue] ?? "bg-muted text-muted-foreground"
       }`}
     >
-      {value.replace(/_/g, " ")}
+      {safeValue.replace(/_/g, " ")}
     </span>
   );
 }
@@ -1075,7 +1483,7 @@ function ActionButton({
   onClick,
 }: {
   children: React.ReactNode;
-  variant: "default" | "destructive";
+  variant: "default" | "destructive" | "warning" | "info";
   loading: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -1090,6 +1498,10 @@ function ActionButton({
       className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
         variant === "destructive"
           ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
+          : variant === "warning"
+          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
+          : variant === "info"
+          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
           : "bg-accent-green/10 text-accent-green hover:bg-accent-green/20"
       }`}
     >

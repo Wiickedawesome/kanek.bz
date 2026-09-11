@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { AdminGuard } from "@/components/admin/admin-guard";
 import { useAuth } from "@/components/admin/auth-provider";
@@ -42,8 +43,15 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const sidebar = (
     <nav className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center border-b border-sidebar-border px-4 font-bold tracking-tight">
-        Kanek Admin
+      <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4 font-bold tracking-tight">
+        <Image
+          src="/logo/kanek_logo_icon.svg"
+          alt="Kanek"
+          width={24}
+          height={24}
+          className="h-6 w-6 object-contain"
+        />
+        <span>Kanek Admin</span>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">

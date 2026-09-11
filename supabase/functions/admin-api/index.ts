@@ -528,6 +528,561 @@ async function handleAccountStatus({ service, adminUserId }: AdminContext, paylo
   return { ok: true };
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildDeclineEmailHtml(params: {
+  userName: string;
+  reasons: string[];
+  customNotes?: string | null;
+  role: string;
+}): string {
+  const safeName = escapeHtml(params.userName);
+  const reasonsList = params.reasons
+    .map(
+      (r) =>
+        `<li style="margin-bottom:8px;color:#142800;font-size:15px;line-height:1.5;">${escapeHtml(r)}</li>`
+    )
+    .join("");
+  const safeNotes = params.customNotes ? escapeHtml(params.customNotes) : null;
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #e7e8e3;">
+    <div style="background:#142800;padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-family:'Work Sans',Arial,sans-serif;margin:0;font-size:26px;letter-spacing:0.5px;">kanek</h1>
+      <p style="color:#a7c882;font-size:13px;margin:6px 0 0;font-weight:500;">Community Mobility for Belize</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <h2 style="color:#142800;font-family:'Work Sans',Arial,sans-serif;margin:0 0 12px;font-size:20px;">Account Verification Update</h2>
+      <p style="color:#4b5545;margin:0 0 16px;font-size:15px;line-height:1.6;">Hello ${safeName},</p>
+      <p style="color:#4b5545;margin:0 0 24px;font-size:15px;line-height:1.6;">
+        Thank you for submitting your account verification documents to Kanek. Our compliance and safety review team has reviewed your application. Unfortunately, your verification could not be approved at this time for the following reason(s):
+      </p>
+
+      <div style="background:#fef5f4;border:1px solid #fed7d2;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+        <h3 style="color:#b91c1c;margin:0 0 12px;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Reasons For Decline</h3>
+        <ul style="margin:0;padding-left:20px;">
+          ${reasonsList}
+        </ul>
+        ${
+          safeNotes
+            ? `<div style="margin-top:16px;padding-top:14px;border-top:1px dashed #fca5a5;">
+                 <span style="display:block;font-size:13px;font-weight:600;color:#991b1b;margin-bottom:4px;">Additional Reviewer Notes:</span>
+                 <p style="margin:0;font-size:14px;color:#4b5545;line-height:1.5;">${safeNotes}</p>
+               </div>`
+            : ""
+        }
+      </div>
+
+      <div style="background:#f6f8f5;border-radius:10px;padding:20px;margin-bottom:28px;">
+        <h4 style="margin:0 0 8px;font-size:15px;color:#142800;font-weight:600;">How to Resolve and Re-submit</h4>
+        <p style="margin:0 0 12px;font-size:14px;color:#555e50;line-height:1.6;">
+          Please open the <strong>Kanek app</strong> on your mobile device, navigate to your Profile &gt; Verification section, and upload clear, updated, and legible copies of the requested documents.
+        </p>
+        <p style="margin:0;font-size:13px;color:#70796a;line-height:1.5;">
+          Make sure that:
+        </p>
+        <ul style="margin:6px 0 0;padding-left:20px;font-size:13px;color:#70796a;line-height:1.5;">
+          <li>All four corners of each document are clearly visible without glare or shadow.</li>
+          <li>Text, dates, and official government stamps are sharp and legible.</li>
+          <li>Documents (such as insurance and driver's licenses) are currently valid and not expired.</li>
+        </ul>
+      </div>
+
+      <p style="color:#555e50;margin:0 0 8px;font-size:14px;line-height:1.6;">
+        If you have questions or believe this is an error, feel free to reply directly to this email or reach us at <a href="mailto:support@belizechain.org" style="color:#2f6e1e;text-decoration:none;font-weight:600;">support@belizechain.org</a>.
+      </p>
+    </div>
+    <div style="background:#f6f6f4;padding:24px;text-align:center;border-top:1px solid #e7e8e3;">
+      <p style="color:#656e5e;font-size:13px;margin:0 0 4px;font-weight:500;">Thank you for moving Belize forward safely.</p>
+      <p style="color:#9aa092;font-size:11px;margin:0;">kanek — Community Mobility Board &bull; Belize</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+async function handleDeclineAccount({ service, adminUserId }: AdminContext, payload: JsonRecord) {
+  const userId = requireString(payload, "userId");
+  const reasons = requireStringArray(payload, "reasons");
+  const customNotes = optionalString(payload, "customNotes");
+
+  if (reasons.length === 0 && !customNotes) {
+    throw new HttpError(400, "At least one decline reason or custom note must be provided.");
+  }
+
+  // 1. Fetch user profile
+  const { data: profile, error: profileError } = await service
+    .from("profiles")
+    .select("id, first_name, last_name, email, role, account_status")
+    .eq("id", userId)
+    .single();
+
+  if (profileError || !profile) {
+    throw new HttpError(404, "User profile not found.");
+  }
+
+  // 2. Update profile account_status to 'restricted'
+  const { error: updateProfileError } = await service
+    .from("profiles")
+    .update({ account_status: "restricted" })
+    .eq("id", userId);
+
+  if (updateProfileError) {
+    throw new HttpError(500, updateProfileError.message);
+  }
+
+  // 3. If user has a driver_details record, update review_status to 'rejected'
+  const combinedReason = [
+    ...reasons,
+    ...(customNotes ? [`Notes: ${customNotes}`] : []),
+  ].join("; ");
+
+  const { data: driverDetail } = await service
+    .from("driver_details")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (driverDetail) {
+    await service
+      .from("driver_details")
+      .update({
+        review_status: "rejected",
+        verified: false,
+        rejection_reason: combinedReason,
+      })
+      .eq("id", userId);
+  }
+
+  // 4. Record action in admin_actions
+  await insertAdminAction(service, {
+    admin_id: adminUserId,
+    action: profile.role === "driver" ? "reject_driver" : "reject_rider_doc",
+    target_type: "user",
+    target_id: userId,
+    reason: combinedReason,
+    metadata: {
+      action_detail: "decline_account",
+      reasons,
+      custom_notes: customNotes,
+      previous_status: profile.account_status,
+      role: profile.role,
+    },
+  });
+
+  // 5. Send decline notification email via Resend
+  let emailSent = false;
+  let emailError: string | null = null;
+
+  if (profile.email) {
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const resendFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "Kanek Support <support@belizechain.org>";
+
+    if (resendApiKey) {
+      try {
+        const userName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Kanek User";
+        const emailHtml = buildDeclineEmailHtml({
+          userName,
+          reasons: reasons.length > 0 ? reasons : ["Documentation requirements not met"],
+          customNotes,
+          role: profile.role ?? "user",
+        });
+
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: resendFrom,
+            to: [profile.email],
+            subject: "Kanek Account Verification Update — Action Required",
+            html: emailHtml,
+          }),
+        });
+
+        if (resendRes.ok) {
+          emailSent = true;
+        } else {
+          const errText = await resendRes.text();
+          console.error("Failed to send decline email via Resend:", errText);
+          emailError = "Resend API returned non-200 status.";
+        }
+      } catch (err) {
+        console.error("Error sending decline email:", err);
+        emailError = err instanceof Error ? err.message : "Failed to send email.";
+      }
+    } else {
+      console.warn("RESEND_API_KEY not configured in environment. Skipping email dispatch.");
+      emailError = "Email service not configured.";
+    }
+  } else {
+    emailError = "User has no email address on file.";
+  }
+
+  return {
+    ok: true,
+    accountStatus: "restricted",
+    emailSent,
+    emailError,
+  };
+}
+
+function buildReminderEmailHtml(params: {
+  userName: string;
+  role: string;
+  missingDocs: string[];
+  reminderType: "3day" | "15day" | "manual";
+}): string {
+  const safeName = escapeHtml(params.userName);
+  const docsList = params.missingDocs
+    .map(
+      (doc) =>
+        `<li style="margin-bottom:8px;color:#142800;font-size:15px;line-height:1.5;"><strong>${escapeHtml(doc)}</strong></li>`
+    )
+    .join("");
+
+  const headerTitle =
+    params.reminderType === "15day"
+      ? "Action Required: Final Verification Notice"
+      : params.reminderType === "3day"
+      ? "Friendly Reminder: Complete Your Kanek Setup"
+      : "Action Required: Complete Your Kanek Verification";
+
+  const bannerColor = params.reminderType === "15day" ? "#b91c1c" : "#142800";
+  const introText =
+    params.reminderType === "15day"
+      ? "It has been 15 days since your Kanek account was registered. To activate your account and start booking or offering rides, your verification documents must be submitted."
+      : params.reminderType === "3day"
+      ? "We noticed you recently started signing up for Kanek. You're just one quick step away from being ready to ride or drive in Belize!"
+      : "This is an official verification reminder from the Kanek team regarding your pending account application.";
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #e7e8e3;">
+    <div style="background:#142800;padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-family:'Work Sans',Arial,sans-serif;margin:0;font-size:26px;letter-spacing:0.5px;">kanek</h1>
+      <p style="color:#a7c882;font-size:13px;margin:6px 0 0;font-weight:500;">Community Mobility for Belize</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <h2 style="color:${bannerColor};font-family:'Work Sans',Arial,sans-serif;margin:0 0 12px;font-size:20px;">${headerTitle}</h2>
+      <p style="color:#4b5545;margin:0 0 16px;font-size:15px;line-height:1.6;">Hello ${safeName},</p>
+      <p style="color:#4b5545;margin:0 0 24px;font-size:15px;line-height:1.6;">
+        ${introText}
+      </p>
+
+      <div style="background:#f6f8f5;border:1px solid #dce4d6;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+        <h3 style="color:#142800;margin:0 0 12px;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Required Document(s)</h3>
+        <ul style="margin:0;padding-left:20px;">
+          ${docsList}
+        </ul>
+      </div>
+
+      <div style="background:#ffffff;border:1px solid #e7e8e3;border-radius:10px;padding:20px;margin-bottom:28px;">
+        <h4 style="margin:0 0 8px;font-size:15px;color:#142800;font-weight:600;">How to Complete Your Verification</h4>
+        <ol style="margin:0;padding-left:20px;font-size:14px;color:#555e50;line-height:1.6;">
+          <li style="margin-bottom:6px;">Open the <strong>Kanek app</strong> on your mobile device.</li>
+          <li style="margin-bottom:6px;">Sign in with your registered account.</li>
+          <li style="margin-bottom:6px;">Follow the on-screen prompts to take a clear, readable photo of your document(s).</li>
+        </ol>
+      </div>
+
+      <p style="color:#555e50;margin:0 0 8px;font-size:14px;line-height:1.6;">
+        Need assistance or having trouble uploading? Reply directly to this email or reach us at <a href="mailto:support@belizechain.org" style="color:#2f6e1e;text-decoration:none;font-weight:600;">support@belizechain.org</a>.
+      </p>
+    </div>
+    <div style="background:#f6f6f4;padding:24px;text-align:center;border-top:1px solid #e7e8e3;">
+      <p style="color:#656e5e;font-size:13px;margin:0 0 4px;font-weight:500;">Thank you for moving Belize forward safely.</p>
+      <p style="color:#9aa092;font-size:11px;margin:0;">kanek — Community Mobility Board &bull; Belize</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+async function sendExpoPush(token: string, title: string, body: string, data?: Record<string, unknown>) {
+  try {
+    const res = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: token,
+        title,
+        body,
+        sound: "default",
+        data: data ?? {},
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("Expo push notification failed:", err);
+    return false;
+  }
+}
+
+async function getMissingDocumentsForUser(
+  service: SupabaseClient,
+  userId: string,
+  role: string
+): Promise<string[]> {
+  const missing: string[] = [];
+
+  if (role === "driver") {
+    const [docs, detail] = await Promise.all([
+      service
+        .from("driver_documents")
+        .select("document_type, review_status")
+        .eq("profile_id", userId),
+      service
+        .from("driver_details")
+        .select(
+          "vehicle_make, vehicle_model, vehicle_plate, license_url, insurance_url, id_document_url"
+        )
+        .eq("id", userId)
+        .maybeSingle(),
+    ]);
+
+    const approvedOrPendingTypes = new Set(
+      (docs.data ?? [])
+        .filter((d) => d.review_status === "approved" || d.review_status === "pending")
+        .map((d) => d.document_type)
+    );
+
+    const hasLicense =
+      approvedOrPendingTypes.has("drivers_license") || Boolean(detail.data?.license_url);
+    const hasInsurance =
+      approvedOrPendingTypes.has("vehicle_insurance") || Boolean(detail.data?.insurance_url);
+    const hasReg =
+      approvedOrPendingTypes.has("vehicle_registration") || Boolean(detail.data?.id_document_url);
+    const hasVehicle = Boolean(detail.data?.vehicle_make && detail.data?.vehicle_plate);
+
+    if (!hasLicense) missing.push("Driver's License (valid class, front & back)");
+    if (!hasInsurance) missing.push("Vehicle Insurance Policy (current)");
+    if (!hasReg) missing.push("Vehicle Registration / Certificate");
+    if (!hasVehicle) missing.push("Vehicle Details (make, model, license plate)");
+  } else {
+    const { data: riderDocs } = await service
+      .from("rider_documents")
+      .select("id, review_status")
+      .eq("user_id", userId);
+
+    const hasApprovedOrPending = (riderDocs ?? []).some(
+      (d) => d.review_status === "approved" || d.review_status === "pending"
+    );
+
+    if (!hasApprovedOrPending) {
+      missing.push("Government-Issued Photo ID (Passport, Social Security Card, or Voter ID)");
+    }
+  }
+
+  return missing;
+}
+
+async function handleSendReminder({ service, adminUserId }: AdminContext, payload: JsonRecord) {
+  const userId = requireString(payload, "userId");
+
+  const { data: profile, error: profileError } = await service
+    .from("profiles")
+    .select("id, first_name, last_name, email, role, push_token, account_status")
+    .eq("id", userId)
+    .single();
+
+  if (profileError || !profile) {
+    throw new HttpError(404, "User profile not found.");
+  }
+
+  const missingDocs = await getMissingDocumentsForUser(service, userId, profile.role);
+  if (missingDocs.length === 0) {
+    throw new HttpError(400, "User has already submitted all required documents.");
+  }
+
+  const userName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Kanek User";
+  let emailSent = false;
+  let pushSent = false;
+
+  // 1. Email via Resend
+  if (profile.email) {
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const resendFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "Kanek Support <support@belizechain.org>";
+
+    if (resendApiKey) {
+      try {
+        const html = buildReminderEmailHtml({
+          userName,
+          role: profile.role,
+          missingDocs,
+          reminderType: "manual",
+        });
+
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: resendFrom,
+            to: [profile.email],
+            subject: "Reminder: Complete Your Kanek Account Verification",
+            html,
+          }),
+        });
+        emailSent = resendRes.ok;
+      } catch (e) {
+        console.error("Failed to send manual reminder email:", e);
+      }
+    }
+  }
+
+  // 2. Push notification via Expo
+  if (profile.push_token) {
+    pushSent = await sendExpoPush(
+      profile.push_token,
+      "Action Required: Complete Kanek Verification",
+      "Please upload your required verification document(s) to activate your account."
+    );
+  }
+
+  // 3. In-App Notification table entry
+  await service.from("notifications").insert({
+    user_id: userId,
+    type: "onboarding_reminder_manual",
+    title: "Complete Your Account Verification",
+    body: `Please upload your missing document(s): ${missingDocs.join(", ")}`,
+    data: { missingDocs, sent_by: adminUserId },
+  });
+
+  return {
+    ok: true,
+    emailSent,
+    pushSent,
+    missingDocs,
+  };
+}
+
+async function handleProcessOnboardingReminders({ service }: AdminContext) {
+  const { data: pendingUsers, error } = await service
+    .from("profiles")
+    .select("id, first_name, last_name, email, role, push_token, created_at, account_status")
+    .eq("account_status", "pending")
+    .neq("role", "admin");
+
+  if (error || !pendingUsers) {
+    throw new HttpError(500, error?.message ?? "Failed to query pending users.");
+  }
+
+  const { data: pastReminders } = await service
+    .from("notifications")
+    .select("user_id, type")
+    .in("type", ["onboarding_reminder_3day", "onboarding_reminder_15day"]);
+
+  const sentMap = new Set(
+    (pastReminders ?? []).map((r) => `${r.user_id}:${r.type}`)
+  );
+
+  let day3Sent = 0;
+  let day15Sent = 0;
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  const resendFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "Kanek Support <support@belizechain.org>";
+
+  for (const user of pendingUsers) {
+    const ageMs = Date.now() - new Date(user.created_at).getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+    let reminderType: "3day" | "15day" | null = null;
+    if (ageDays >= 15 && !sentMap.has(`${user.id}:onboarding_reminder_15day`)) {
+      reminderType = "15day";
+    } else if (ageDays >= 3 && !sentMap.has(`${user.id}:onboarding_reminder_3day`)) {
+      reminderType = "3day";
+    }
+
+    if (!reminderType) continue;
+
+    const missingDocs = await getMissingDocumentsForUser(service, user.id, user.role);
+    if (missingDocs.length === 0) continue;
+
+    const userName = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "Kanek User";
+
+    // Send email
+    if (user.email && resendApiKey) {
+      try {
+        const html = buildReminderEmailHtml({
+          userName,
+          role: user.role,
+          missingDocs,
+          reminderType,
+        });
+
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: resendFrom,
+            to: [user.email],
+            subject:
+              reminderType === "15day"
+                ? "Final Notice: Action Required to Verify Your Kanek Account"
+                : "Reminder: Complete Your Kanek Account Verification",
+            html,
+          }),
+        });
+      } catch (e) {
+        console.error(`Failed to send ${reminderType} email to ${user.email}:`, e);
+      }
+    }
+
+    // Send push
+    if (user.push_token) {
+      await sendExpoPush(
+        user.push_token,
+        reminderType === "15day"
+          ? "Final Reminder: Complete Verification"
+          : "Reminder: Complete Kanek Verification",
+        `Please submit your verification document(s) to activate your account: ${missingDocs.join(", ")}`
+      );
+    }
+
+    // Record in notifications
+    const notifType = `onboarding_reminder_${reminderType}`;
+    await service.from("notifications").insert({
+      user_id: user.id,
+      type: notifType,
+      title:
+        reminderType === "15day"
+          ? "Final Notice: Verification Documents Required"
+          : "Reminder: Verification Documents Required",
+      body: `Please upload your missing document(s): ${missingDocs.join(", ")}`,
+      data: { missingDocs, reminderType },
+    });
+
+    sentMap.add(`${user.id}:${notifType}`);
+    if (reminderType === "15day") day15Sent++;
+    else day3Sent++;
+  }
+
+  return {
+    scannedCount: pendingUsers.length,
+    day3Sent,
+    day15Sent,
+  };
+}
+
 async function handleReviewDriver({ service, adminUserId }: AdminContext, payload: JsonRecord) {
   const driverId = requireString(payload, "driverId");
   const status = requireString(payload, "status");
@@ -866,6 +1421,15 @@ Deno.serve(async (request) => {
         break;
       case "/users/account-status":
         responseBody = await handleAccountStatus(context, payload);
+        break;
+      case "/users/decline-account":
+        responseBody = await handleDeclineAccount(context, payload);
+        break;
+      case "/users/send-reminder":
+        responseBody = await handleSendReminder(context, payload);
+        break;
+      case "/users/process-onboarding-reminders":
+        responseBody = await handleProcessOnboardingReminders(context);
         break;
       case "/users/detail":
         responseBody = await handleUserDetail(context, payload);

@@ -23,6 +23,13 @@ export const metadata: Metadata = {
   description:
     "A community mobility board for Belize. Post rides, routes, errands, package deliveries, and jobs. People helping people move.",
   metadataBase: new URL("https://kanek.bz"),
+  icons: {
+    icon: [
+      { url: "/logo/kanek_logo_icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/logo/kanek_logo_icon.png",
+  },
   openGraph: {
     title: "kanek — Community Mobility for Belize",
     description: "Post rides, routes, errands, deliveries, and jobs. People helping people move.",
@@ -30,11 +37,20 @@ export const metadata: Metadata = {
     siteName: "kanek",
     locale: "en_BZ",
     type: "website",
+    images: [
+      {
+        url: "/logo/kanek_logo.png",
+        width: 2720,
+        height: 1536,
+        alt: "kanek — Community Mobility for Belize",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "kanek — Community Mobility for Belize",
     description: "Post rides, routes, errands, deliveries, and jobs. People helping people move.",
+    images: ["/logo/kanek_logo.png"],
   },
 };
 

@@ -194,6 +194,23 @@ export async function updateAdminAccountStatus(userId: string, status: string) {
   await callAdminBackend("/users/account-status", { userId, status });
 }
 
+export async function declineAdminAccount(
+  userId: string,
+  reasons: string[],
+  customNotes?: string
+) {
+  return callAdminBackend<{
+    ok: boolean;
+    accountStatus: string;
+    emailSent: boolean;
+    emailError: string | null;
+  }>("/users/decline-account", {
+    userId,
+    reasons,
+    customNotes: customNotes ?? null,
+  });
+}
+
 export async function reviewAdminDriverApplication(
   driverId: string,
   status: "approved" | "rejected",
@@ -245,4 +262,21 @@ export async function resolveAdminDocumentUrl(documentRef: string | null) {
   });
 
   return response?.url ?? null;
+}
+
+export async function sendAdminUserReminder(userId: string) {
+  return callAdminBackend<{
+    ok: boolean;
+    emailSent: boolean;
+    pushSent: boolean;
+    missingDocs: string[];
+  }>("/users/send-reminder", { userId });
+}
+
+export async function processAdminOnboardingReminders() {
+  return callAdminBackend<{
+    scannedCount: number;
+    day3Sent: number;
+    day15Sent: number;
+  }>("/users/process-onboarding-reminders", {});
 }

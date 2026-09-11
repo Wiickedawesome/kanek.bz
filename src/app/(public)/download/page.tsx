@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, BellRing, Shield, Smartphone, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -9,10 +10,20 @@ export default function DownloadPage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(101,246,123,0.15),transparent_55%)]" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,rgba(73,103,246,0.14),transparent_40%)]" />
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-neon-green">
-            Download
-          </p>
-          <h1 className="mt-8 max-w-4xl font-heading text-[clamp(3rem,8vw,6.5rem)] font-black leading-[0.92] tracking-tighter">
+          <div className="flex items-center gap-3.5 mb-2">
+            <Image
+              src="/logo/kanek_logo_icon.svg"
+              alt="kanek app"
+              width={48}
+              height={48}
+              className="h-12 w-12 object-contain"
+              priority
+            />
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-neon-green">
+              Download
+            </p>
+          </div>
+          <h1 className="mt-6 max-w-4xl font-heading text-[clamp(3rem,8vw,6.5rem)] font-black leading-[0.92] tracking-tighter">
             kanek is live
             <br />
             in your pocket.

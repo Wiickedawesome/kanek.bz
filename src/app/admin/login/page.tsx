@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/components/admin/auth-provider";
 import { useEffect } from "react";
 
@@ -84,6 +85,16 @@ export default function AdminLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
+          <div className="flex justify-center mb-4">
+            <Image
+              src="/logo/kanek_logo_icon.svg"
+              alt="Kanek"
+              width={64}
+              height={64}
+              className="h-16 w-16 object-contain"
+              priority
+            />
+          </div>
           <h1 className="text-2xl font-bold tracking-tight">Kanek Admin</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {step === "email"
