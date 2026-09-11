@@ -3,6 +3,14 @@
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
+  Bell,
+  X,
+  ArrowLeft,
+  ArrowRight,
+  Search,
+  Loader2,
+} from "lucide-react";
+import {
   declineAdminAccount,
   getAdminActionErrorMessage,
   getAdminUserDetail,
@@ -17,13 +25,20 @@ import {
   updateAdminAccountStatus,
 } from "@/lib/admin-backend";
 
-const DECLINE_REASONS = [
+const DRIVER_DECLINE_REASONS = [
   "Driver's License not approved (expired, unreadable, or invalid class)",
   "Vehicle Insurance not approved (expired, invalid policy, or name mismatch)",
   "Vehicle Registration / Certificate not approved (expired, plate mismatch, or unreadable)",
   "Government-Issued Photo ID not approved (blurry photo, expired, or invalid document)",
   "Vehicle details or photos not compliant with safety standards",
   "Documentation incomplete or illegible",
+];
+
+const RIDER_DECLINE_REASONS = [
+  "Government-Issued Photo ID not approved (blurry photo, expired, or invalid document)",
+  "Identification details mismatch with profile information",
+  "Documentation incomplete, altered, or illegible",
+  "Identity verification requirements not met",
 ];
 
 type Profile = {
@@ -447,9 +462,10 @@ function UsersPageInner() {
         <div className="space-y-4">
           <button
             onClick={() => router.push("/admin/users")}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            ← Back to Users
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to Users</span>
           </button>
           {actionError && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -461,17 +477,16 @@ function UsersPageInner() {
       );
     }
 
-    const fullName =
-      [detailProfile.first_name, detailProfile.last_name].filter(Boolean).join(" ") ||
-      "Unknown User";
+    const fullName = getUserDisplayName(detailProfile);
 
     return (
       <div className="space-y-6">
         <button
           onClick={() => router.push("/admin/users")}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          ← Back to Users
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to Users</span>
         </button>
 
         {loadError && (
@@ -948,7 +963,7 @@ function UsersPageInner() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Applicant:{" "}
                     <span className="font-medium text-foreground">
-                      {detailProfile.first_name} {detailProfile.last_name}
+                      {getUserDisplayName(detailProfile)}
                     </span>{" "}
                     ({detailProfile.email ?? "No email on file"}) &bull; Role:{" "}
                     <span className="capitalize">{detailProfile.role}</span>
@@ -957,10 +972,10 @@ function UsersPageInner() {
                 <button
                   type="button"
                   onClick={() => !declineSubmitting && setDeclineDialogOpen(false)}
-                  className="text-muted-foreground hover:text-foreground text-sm p-1 rounded hover:bg-muted transition-colors"
+                  className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted transition-colors"
                   aria-label="Close"
                 >
-                  ✕
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
@@ -970,7 +985,10 @@ function UsersPageInner() {
                     Select Reason(s) for Decline
                   </label>
                   <div className="space-y-2">
-                    {DECLINE_REASONS.map((reason) => {
+                    {(detailProfile.role === "driver"
+                      ? DRIVER_DECLINE_REASONS
+                      : RIDER_DECLINE_REASONS
+                    ).map((reason) => {
                       const isChecked = selectedDeclineReasons.includes(reason);
                       return (
                         <label
@@ -1087,13 +1105,33 @@ function UsersPageInner() {
     return name.includes(q) || email.includes(q) || phone.includes(q) || vehicle.includes(q);
   });
 
+  const filteredDriverDocs = driverDocs.filter((doc) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const profile = profiles.find((p) => p.id === doc.profile_id);
+    const name = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.toLowerCase();
+    const email = (profile?.email ?? "").toLowerCase();
+    const docType = (doc.document_type ?? "").toLowerCase();
+    const docNum = (doc.document_number ?? "").toLowerCase();
+    return name.includes(q) || email.includes(q) || docType.includes(q) || docNum.includes(q);
+  });
+
+  const filteredRiderDocs = riderDocs.filter((doc) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const profile = profiles.find((p) => p.id === doc.user_id);
+    const name = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.toLowerCase();
+    const email = (profile?.email ?? "").toLowerCase();
+    return name.includes(q) || email.includes(q);
+  });
+
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "all", label: "All Users", count: filteredProfiles.length },
     { key: "drivers", label: "Drivers", count: filteredDrivers.length },
     {
       key: "pending-docs",
       label: "Pending Documents",
-      count: driverDocs.length + riderDocs.length,
+      count: filteredDriverDocs.length + filteredRiderDocs.length,
     },
   ];
 
@@ -1142,20 +1180,21 @@ function UsersPageInner() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 sm:w-64">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md border border-input bg-background pl-8 pr-7 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded transition-colors"
                 aria-label="Clear search"
               >
-                ✕
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
@@ -1176,7 +1215,11 @@ function UsersPageInner() {
             className="rounded-md border border-input bg-background hover:bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors disabled:opacity-50 flex items-center gap-1.5"
             title="Scan pending accounts and send 3-day / 15-day reminders for missing docs"
           >
-            <span>🔔</span>
+            {sweepLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Bell className="h-3.5 w-3.5 text-foreground" />
+            )}
             <span>{sweepLoading ? "Running Sweep..." : "Run Reminder Sweep"}</span>
           </button>
         </div>
@@ -1291,7 +1334,9 @@ function UsersPageInner() {
                             <StatusBadge value={reviewStatus} />
                           </td>
                           <td className="px-3 py-2">
-                            <span className="text-xs text-accent-blue">View details →</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-accent-blue font-medium">
+                              View details <ArrowRight className="h-3 w-3" />
+                            </span>
                           </td>
                         </tr>
                       );
@@ -1305,7 +1350,7 @@ function UsersPageInner() {
           {/* PENDING DOCS TAB */}
           {tab === "pending-docs" && (
             <div className="space-y-6">
-              {driverDocs.length > 0 && (
+              {filteredDriverDocs.length > 0 && (
                 <div>
                   <h3 className="mb-2 text-sm font-medium">Driver Documents</h3>
                   <div className="overflow-x-auto rounded-lg border">
@@ -1320,7 +1365,7 @@ function UsersPageInner() {
                         </tr>
                       </thead>
                       <tbody>
-                        {driverDocs.map((doc) => {
+                        {filteredDriverDocs.map((doc) => {
                           const profile = profiles.find((p) => p.id === doc.profile_id);
                           return (
                             <tr
@@ -1342,7 +1387,9 @@ function UsersPageInner() {
                                   : "—"}
                               </td>
                               <td className="px-3 py-2">
-                                <span className="text-xs text-accent-blue">Review →</span>
+                                <span className="inline-flex items-center gap-1 text-xs text-accent-blue font-medium">
+                                  Review <ArrowRight className="h-3 w-3" />
+                                </span>
                               </td>
                             </tr>
                           );
@@ -1353,7 +1400,7 @@ function UsersPageInner() {
                 </div>
               )}
 
-              {riderDocs.length > 0 && (
+              {filteredRiderDocs.length > 0 && (
                 <div>
                   <h3 className="mb-2 text-sm font-medium">Rider Documents</h3>
                   <div className="overflow-x-auto rounded-lg border">
@@ -1365,7 +1412,7 @@ function UsersPageInner() {
                         </tr>
                       </thead>
                       <tbody>
-                        {riderDocs.map((doc) => {
+                        {filteredRiderDocs.map((doc) => {
                           const profile = profiles.find((p) => p.id === doc.user_id);
                           return (
                             <tr
@@ -1378,7 +1425,9 @@ function UsersPageInner() {
                                 {profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}
                               </td>
                               <td className="px-3 py-2">
-                                <span className="text-xs text-accent-blue">Review →</span>
+                                <span className="inline-flex items-center gap-1 text-xs text-accent-blue font-medium">
+                                  Review <ArrowRight className="h-3 w-3" />
+                                </span>
                               </td>
                             </tr>
                           );
@@ -1389,8 +1438,10 @@ function UsersPageInner() {
                 </div>
               )}
 
-              {driverDocs.length === 0 && riderDocs.length === 0 && (
-                <p className="text-sm text-muted-foreground">No pending document reviews.</p>
+              {filteredDriverDocs.length === 0 && filteredRiderDocs.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {searchQuery ? "No pending documents match your search." : "No pending document reviews."}
+                </p>
               )}
             </div>
           )}
@@ -1495,7 +1546,7 @@ function ActionButton({
         onClick();
       }}
       disabled={loading || disabled}
-      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-1.5 min-h-[26px] ${
         variant === "destructive"
           ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
           : variant === "warning"
@@ -1505,7 +1556,7 @@ function ActionButton({
           : "bg-accent-green/10 text-accent-green hover:bg-accent-green/20"
       }`}
     >
-      {loading ? "…" : children}
+      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : children}
     </button>
   );
 }
