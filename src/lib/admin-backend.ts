@@ -183,6 +183,15 @@ export type BookingAuditItem = {
     status: string;
     createdAt: string;
   }[];
+  notifications?: {
+    id: string;
+    userId: string;
+    recipientName?: string | null;
+    type: string;
+    title: string;
+    body: string | null;
+    createdAt: string;
+  }[];
 };
 
 export async function getAdminBookingsData<TBookings = unknown, TContracts = unknown>() {

@@ -816,7 +816,7 @@ async function handleContentList({ service }: AdminContext) {
       .limit(200),
     service
       .from("notifications")
-      .select("id, user_id, type, title, body, read, created_at")
+      .select("id, user_id, type, title, body, read, data, created_at")
       .order("created_at", { ascending: false })
       .limit(100),
   ]);

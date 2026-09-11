@@ -23,6 +23,7 @@ import {
   CalendarCheck,
   Copy,
   Check,
+  Bell,
 } from "lucide-react";
 import {
   getAdminActionErrorMessage,
@@ -99,6 +100,17 @@ type Post = {
   created_at: string;
 };
 
+type Notification = {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  read: boolean;
+  data?: Record<string, unknown> | null;
+  created_at: string;
+};
+
 function getPersonDisplayName(
   profile?: Profile | null,
   fallbackId?: string | null,
@@ -122,7 +134,8 @@ function synthesizeAuditItemsFromRaw(
   apiAuditItems: BookingAuditItem[] = [],
   profiles: Profile[] = [],
   driverDetails: DriverDetail[] = [],
-  posts: Post[] = []
+  posts: Post[] = [],
+  notifications: Notification[] = []
 ): BookingAuditItem[] {
   if (apiAuditItems.length > 0) {
     return apiAuditItems;
@@ -171,6 +184,48 @@ function synthesizeAuditItemsFromRaw(
     const agreedPrice =
       contract?.agreed_price_cents ??
       (post?.price_cents ? post.price_cents * (b.seats_booked ?? 1) : null);
+
+    const bookingNotifications = notifications
+      .filter((n) => {
+        const data = n.data as Record<string, unknown> | undefined;
+        if (data) {
+          if (data.bookingId === b.id || data.booking_id === b.id) return true;
+          if (
+            (data.postId === b.post_id || data.post_id === b.post_id) &&
+            (n.user_id === driverId || n.user_id === riderId)
+          ) {
+            return true;
+          }
+        }
+        if (
+          (n.user_id === driverId || n.user_id === riderId) &&
+          post?.title &&
+          (n.body?.toLowerCase().includes(post.title.toLowerCase()) ||
+            n.title?.toLowerCase().includes(post.title.toLowerCase()))
+        ) {
+          return true;
+        }
+        return false;
+      })
+      .map((n) => {
+        const recipient = profilesMap.get(n.user_id);
+        const recipientName = recipient
+          ? getPersonDisplayName(recipient, n.user_id)
+          : n.user_id === driverId
+          ? driverName
+          : n.user_id === riderId
+          ? riderName
+          : `User (${n.user_id.slice(0, 8)})`;
+        return {
+          id: n.id,
+          userId: n.user_id,
+          recipientName,
+          type: n.type,
+          title: n.title,
+          body: n.body,
+          createdAt: n.created_at,
+        };
+      });
 
     return {
       id: b.id,
@@ -282,6 +337,7 @@ function synthesizeAuditItemsFromRaw(
       ],
       ratings: [] as BookingAuditItem["ratings"],
       flags: [] as BookingAuditItem["flags"],
+      notifications: bookingNotifications,
     };
   });
 }
@@ -332,7 +388,7 @@ function BookingsPageInner() {
       const [bookingsData, usersData, contentData] = await Promise.all([
         getAdminBookingsData<RawBooking, RawContract>(),
         getAdminUsersData<Profile, DriverDetail, unknown, unknown>().catch(() => null),
-        getAdminContentData<Post, unknown>().catch(() => null),
+        getAdminContentData<Post, Notification>().catch(() => null),
       ]);
 
       const items = synthesizeAuditItemsFromRaw(
@@ -341,7 +397,8 @@ function BookingsPageInner() {
         bookingsData.auditItems ?? [],
         usersData?.profiles ?? [],
         usersData?.driverDetails ?? [],
-        contentData?.posts ?? []
+        contentData?.posts ?? [],
+        contentData?.notifications ?? []
       );
       setAuditItems(items);
     } catch (error) {
@@ -1120,6 +1177,52 @@ function BookingsPageInner() {
                     <p className="text-xs text-muted-foreground italic">No lifecycle events recorded.</p>
                   )}
                 </div>
+              </div>
+
+              {/* Dispatched User Alerts & Push Notifications for this Trip */}
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-md bg-blue-500/10 text-blue-600">
+                      <Bell className="h-4 w-4" />
+                    </div>
+                    <h4 className="text-sm font-bold text-foreground">
+                      Dispatched User Alerts & Push Notifications
+                    </h4>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedItem.notifications?.length ?? 0} alert
+                    {(selectedItem.notifications?.length ?? 0) === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {selectedItem.notifications && selectedItem.notifications.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedItem.notifications.map((notif) => (
+                      <div key={notif.id} className="rounded-md border bg-muted/10 p-3 text-xs space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-foreground">{notif.title}</span>
+                            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                              {notif.type}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground tabular-nums">
+                            {new Date(notif.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {notif.body && <p className="text-muted-foreground">{notif.body}</p>}
+                        <div className="text-[10px] text-muted-foreground pt-0.5">
+                          Recipient: <span className="font-medium text-foreground">{notif.recipientName}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    No automated notifications recorded for this ride.
+                  </p>
+                )}
               </div>
 
               {/* Two-Way Ratings & Feedback */}
