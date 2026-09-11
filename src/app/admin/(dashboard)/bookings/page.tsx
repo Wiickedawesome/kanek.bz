@@ -545,7 +545,6 @@ export default function BookingsPage() {
                 <th className="px-3 py-2.5 text-left font-semibold">Payment</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Status</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Created</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -643,17 +642,12 @@ export default function BookingsPage() {
                         })}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-right">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-accent-blue hover:underline">
-                        Details <ArrowRight className="h-3.5 w-3.5" />
-                      </span>
-                    </td>
                   </tr>
                 );
               })}
               {filteredAuditItems.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                     {searchQuery
                       ? "No bookings match your search criteria."
                       : "No bookings found."}
