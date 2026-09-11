@@ -104,6 +104,8 @@ function requireStringArray(payload: JsonRecord, key: string) {
 }
 
 async function requireAdmin(request: Request): Promise<AdminContext> {
+  // Existing admin authentication (unchanged)
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -163,6 +165,54 @@ async function requireAdmin(request: Request): Promise<AdminContext> {
     adminUserId: user.id,
     service,
     supabaseUrl,
+  };
+}
+
+async function requireUser(request: Request): Promise<{ userId: string; service: SupabaseClient }> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+    throw new HttpError(500, "Supabase function environment is missing required credentials.");
+  }
+
+  const authorization = request.headers.get("Authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    throw new HttpError(401, "Missing bearer token.");
+  }
+
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        Authorization: authorization,
+      },
+    },
+  });
+
+  const service = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  const {
+    data: { user },
+    error: authError,
+  } = await authClient.auth.getUser();
+
+  if (authError || !user) {
+    throw new HttpError(401, "Invalid or expired session.");
+  }
+
+  return {
+    userId: user.id,
+    service,
   };
 }
 
@@ -893,6 +943,12 @@ async function handleReviewFlag({ service, adminUserId }: AdminContext, payload:
     throw new HttpError(400, "Invalid flag review status.");
   }
 
+  const { data: flag } = await service
+    .from("flags")
+    .select("id, reporter_id, target_type, target_id")
+    .eq("id", flagId)
+    .maybeSingle();
+
   const { error } = await service
     .from("flags")
     .update({ status, reviewed_by: adminUserId })
@@ -910,6 +966,54 @@ async function handleReviewFlag({ service, adminUserId }: AdminContext, payload:
     reason: status === "dismissed" ? "Dismissed" : "Action taken",
   });
 
+  // Notify the reporter that their report has been reviewed
+  if (flag?.reporter_id) {
+    await notifyUserAccount(service, flag.reporter_id, {
+      type: "flag_reviewed",
+      title: "Report Status Update",
+      body: status === "action_taken"
+        ? "Thank you for reporting. A moderator has reviewed your report and taken appropriate action."
+        : "Thank you for reporting. A moderator has reviewed your report and determined no further action is needed at this time.",
+      data: { flagId, status },
+    });
+  }
+
+  // Automatic suspension after 3 flags on a user
+  if (status === "action_taken" && flag?.target_type === "user") {
+    // Count total flags for this user
+    const { data: flagCountData, error: flagCountErr } = await service
+      .from("flags")
+      .select("id", { count: "exact", head: true })
+      .eq("target_type", "user")
+      .eq("target_id", flag.target_id);
+    if (flagCountErr) {
+      console.error("Failed to count user flags:", flagCountErr);
+    } else if ((flagCountData?.count ?? 0) >= 3) {
+      // Suspend the user account
+      const { error: suspendErr } = await service
+        .from("profiles")
+        .update({ account_status: "suspended" })
+        .eq("id", flag.target_id);
+      if (!suspendErr) {
+        const { data: profile } = await service
+          .from("profiles")
+          .select("push_token, email, first_name, last_name")
+          .eq("id", flag.target_id)
+          .maybeSingle();
+        if (profile) {
+          const userName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Kanek User";
+          const title = "Account Suspended";
+          const body = "Your account has been temporarily suspended due to multiple reports. If you believe this is a mistake, please contact support.";
+          await notifyUserAccount(service, flag.target_id, { type: "account_suspended", title, body, data: { status: "suspended" } });
+          if (profile.email) {
+            const emailHtml = buildSuspensionEmailHtml({ userName, reason: null });
+            await sendResendEmailNotification({ to: profile.email, subject: title, html: emailHtml });
+          }
+        }
+      }
+    }
+  }
+
   return { ok: true };
 }
 
@@ -919,7 +1023,7 @@ async function handleIssueStrike({ service, adminUserId }: AdminContext, payload
   const reason = requireString(payload, "reason");
 
   if (type !== "soft" && type !== "hard") {
-    throw new HttpError(400, "Strike type must be \`soft\` or \`hard\`.");
+    throw new HttpError(400, "Strike type must be `soft` or `hard`.");
   }
 
   const { error: insertError } = await service.from("strikes").insert({
@@ -942,12 +1046,30 @@ async function handleIssueStrike({ service, adminUserId }: AdminContext, payload
     throw new HttpError(500, softCount.error?.message ?? hardCount.error?.message ?? "Failed to refresh strike counts.");
   }
 
+  const totalSoft = softCount.count ?? 0;
+  const totalHard = hardCount.count ?? 0;
+
+  // Escalation policy matching mobile process-strikes:
+  // 3+ hard strikes => account suspended
+  // 10+ soft strikes => account restricted
+  let newStatus: string | null = null;
+  if (totalHard >= 3) {
+    newStatus = "suspended";
+  } else if (totalSoft >= 10) {
+    newStatus = "restricted";
+  }
+
+  const profileUpdates: Record<string, unknown> = {
+    strikes_soft: totalSoft,
+    strikes_hard: totalHard,
+  };
+  if (newStatus) {
+    profileUpdates.account_status = newStatus;
+  }
+
   const { error: profileError } = await service
     .from("profiles")
-    .update({
-      strikes_soft: softCount.count ?? 0,
-      strikes_hard: hardCount.count ?? 0,
-    })
+    .update(profileUpdates)
     .eq("id", userId);
 
   if (profileError) {
@@ -960,8 +1082,114 @@ async function handleIssueStrike({ service, adminUserId }: AdminContext, payload
     target_type: "user",
     target_id: userId,
     reason,
-    metadata: { strike_type: type },
+    metadata: { strike_type: type, soft_count: totalSoft, hard_count: totalHard, new_status: newStatus },
   });
+
+  // Notify user in-app + Expo push notification
+  const strikeTitle = type === "hard" ? "Hard Penalty Strike Issued" : "Penalty Strike Warning";
+  const strikeBody = `A ${type} strike was added to your account: ${reason}.${
+    newStatus === "suspended"
+      ? " Your account has been suspended."
+      : newStatus === "restricted"
+      ? " Your account privileges have been restricted."
+      : ""
+  }`;
+
+  await notifyUserAccount(service, userId, {
+    type: "strike_received",
+    title: strikeTitle,
+    body: strikeBody,
+    data: { strikeType: type, reason, softCount: totalSoft, hardCount: totalHard, accountStatus: newStatus },
+  });
+
+  // If user has email and RESEND_API_KEY, send branded strike email
+  const { data: profile } = await service
+    .from("profiles")
+    .select("first_name, last_name, email")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile?.email) {
+    const userName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Kanek User";
+    const emailHtml = buildStrikeEmailHtml({
+      userName,
+      strikeType: type,
+      reason,
+      softCount: totalSoft,
+      hardCount: totalHard,
+      newStatus,
+    });
+    await sendResendEmailNotification({
+      to: profile.email,
+      subject: `Kanek Safety Notice: ${strikeTitle}`,
+      html: emailHtml,
+    });
+  }
+
+  return { ok: true, softCount: totalSoft, hardCount: totalHard, newStatus };
+}
+
+async function handleUserReportStrike(
+  { userId, service }: { userId: string; service: SupabaseClient },
+  payload: JsonRecord
+) {
+  const targetUserId = requireString(payload, "targetUserId");
+  const type = requireString(payload, "type");
+  const reason = requireString(payload, "reason");
+
+  if (type !== "soft" && type !== "hard") {
+    throw new HttpError(400, "Strike type must be `soft` or `hard`.");
+  }
+
+  // Insert strike with reporter information
+  const { error: insertError } = await service.from("strikes").insert({
+    user_id: targetUserId,
+    type,
+    reason,
+    auto_generated: false,
+    reporter_id: userId,
+  });
+
+  if (insertError) {
+    throw new HttpError(500, insertError.message);
+  }
+
+  // Refresh counts (same logic as admin handler)
+  const [softCount, hardCount] = await Promise.all([
+    service.from("strikes").select("id", { count: "exact", head: true }).eq("user_id", targetUserId).eq("type", "soft"),
+    service.from("strikes").select("id", { count: "exact", head: true }).eq("user_id", targetUserId).eq("type", "hard"),
+  ]);
+
+  if (softCount.error || hardCount.error) {
+    throw new HttpError(500, softCount.error?.message ?? hardCount.error?.message ?? "Failed to refresh strike counts.");
+  }
+
+  const totalSoft = softCount.count ?? 0;
+  const totalHard = hardCount.count ?? 0;
+  let newStatus: string | null = null;
+  if (totalHard >= 3) newStatus = "suspended";
+  else if (totalSoft >= 10) newStatus = "restricted";
+
+  const profileUpdates: Record<string, unknown> = { strikes_soft: totalSoft, strikes_hard: totalHard };
+  if (newStatus) profileUpdates.account_status = newStatus;
+
+  const { error: profileError } = await service.from("profiles").update(profileUpdates).eq("id", targetUserId);
+  if (profileError) throw new HttpError(500, profileError.message);
+
+  // Log as admin action but note it originated from a user report
+  await insertAdminAction(service, {
+    admin_id: userId, // the reporting user becomes the actor
+    action: "user_reported_strike",
+    target_type: "user",
+    target_id: targetUserId,
+    reason,
+    metadata: { strike_type: type, soft_count: totalSoft, hard_count: totalHard, new_status: newStatus },
+  });
+
+  // Notify the target user (same payload as admin strike)
+  const strikeTitle = type === "hard" ? "Hard Penalty Strike Issued" : "Penalty Strike Warning";
+  const strikeBody = `A ${type} strike was added to your account: ${reason}.${newStatus === "suspended" ? " Your account has been suspended." : newStatus === "restricted" ? " Your account privileges have been restricted." : ""}`;
+  await notifyUserAccount(service, targetUserId, { type: "strike_received", title: strikeTitle, body: strikeBody });
 
   return { ok: true };
 }
@@ -1063,6 +1291,28 @@ async function handleAccountStatus({ service, adminUserId }: AdminContext, paylo
     target_id: userId,
     reason: null,
   });
+
+  // Fetch user profile for notifications
+  const { data: profile } = await service
+    .from("profiles")
+    .select("push_token, email, first_name, last_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile) {
+    const userName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Kanek User";
+    const notifType = status === "suspended" ? "account_suspended" : "account_reactivated";
+    const title = status === "suspended" ? "Account Suspended" : "Account Reactivated";
+    const body = status === "suspended" ? "Your account has been suspended due to policy violations." : "Your account has been reactivated and is now active.";
+    await notifyUserAccount(service, userId, { type: notifType, title, body, data: { status } });
+    // Send email if address available
+    if (profile.email) {
+      const emailHtml = status === "suspended"
+        ? buildSuspensionEmailHtml({ userName, reason: null })
+        : buildReactivationEmailHtml({ userName });
+      await sendResendEmailNotification({ to: profile.email, subject: title, html: emailHtml });
+    }
+  }
 
   return { ok: true };
 }
@@ -1372,6 +1622,254 @@ async function sendExpoPush(token: string, title: string, body: string, data?: R
   }
 }
 
+async function sendResendEmailNotification(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<boolean> {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  const resendFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "Kanek Support <support@belizechain.org>";
+  if (!resendApiKey || !params.to) {
+    return false;
+  }
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: resendFrom,
+        to: [params.to],
+        subject: params.subject,
+        html: params.html,
+      }),
+    });
+    if (!res.ok) {
+      console.error("Resend email dispatch error:", await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Resend email dispatch exception:", err);
+    return false;
+  }
+}
+
+async function notifyUserAccount(
+  service: SupabaseClient,
+  userId: string,
+  params: {
+    type: string;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+  }
+) {
+  try {
+    await service.from("notifications").insert({
+      user_id: userId,
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      data: params.data ?? {},
+    });
+
+    const { data: profile } = await service
+      .from("profiles")
+      .select("push_token")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profile?.push_token) {
+      await sendExpoPush(profile.push_token, params.title, params.body, params.data);
+    }
+  } catch (err) {
+    console.error(`Failed to dispatch notification to user ${userId}:`, err);
+  }
+}
+
+function buildDriverApprovalEmailHtml(params: { userName: string }): string {
+  const safeName = escapeHtml(params.userName);
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #e7e8e3;">
+    <div style="background:#142800;padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-family:'Work Sans',Arial,sans-serif;margin:0;font-size:26px;letter-spacing:0.5px;">kanek</h1>
+      <p style="color:#a7c882;font-size:13px;margin:6px 0 0;font-weight:500;">Community Mobility for Belize</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <h2 style="color:#142800;font-family:'Work Sans',Arial,sans-serif;margin:0 0 12px;font-size:20px;">Welcome to Kanek — Driver Account Approved!</h2>
+      <p style="color:#4b5545;margin:0 0 16px;font-size:15px;line-height:1.6;">Hello ${safeName},</p>
+      <p style="color:#4b5545;margin:0 0 24px;font-size:15px;line-height:1.6;">
+        Congratulations! Your driver application and vehicle verification have been fully approved by our safety compliance team. You are now authorized to offer rides, errands, and delivery services across Belize on Kanek.
+      </p>
+
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+        <h3 style="color:#166534;margin:0 0 8px;font-size:15px;font-weight:700;">What's Next?</h3>
+        <ul style="margin:0;padding-left:20px;color:#14532d;font-size:14px;line-height:1.6;">
+          <li>Open the Kanek mobile app.</li>
+          <li>Post your scheduled routes and available seats.</li>
+          <li>Accept ride requests, errands, and package deliveries.</li>
+        </ul>
+      </div>
+
+      <p style="color:#555e50;margin:0 0 8px;font-size:14px;line-height:1.6;">
+        If you have any questions or need driver support, please contact us at <a href="mailto:support@belizechain.org" style="color:#2f6e1e;text-decoration:none;font-weight:600;">support@belizechain.org</a>.
+      </p>
+    </div>
+    <div style="background:#f6f6f4;padding:24px;text-align:center;border-top:1px solid #e7e8e3;">
+      <p style="color:#656e5e;font-size:13px;margin:0 0 4px;font-weight:500;">Drive safely and thank you for moving Belize forward.</p>
+      <p style="color:#9aa092;font-size:11px;margin:0;">kanek — Community Mobility Board &bull; Belize</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildSuspensionEmailHtml(params: { userName: string; reason?: string | null }): string {
+  const safeName = escapeHtml(params.userName);
+  const safeReason = params.reason ? escapeHtml(params.reason) : null;
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #e7e8e3;">
+    <div style="background:#142800;padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-family:'Work Sans',Arial,sans-serif;margin:0;font-size:26px;letter-spacing:0.5px;">kanek</h1>
+      <p style="color:#a7c882;font-size:13px;margin:6px 0 0;font-weight:500;">Community Mobility for Belize</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <h2 style="color:#b91c1c;font-family:'Work Sans',Arial,sans-serif;margin:0 0 12px;font-size:20px;">Notice of Account Suspension</h2>
+      <p style="color:#4b5545;margin:0 0 16px;font-size:15px;line-height:1.6;">Hello ${safeName},</p>
+      <p style="color:#4b5545;margin:0 0 20px;font-size:15px;line-height:1.6;">
+        This email is an official notification that your Kanek account has been suspended following a safety or policy compliance review.
+      </p>
+
+      ${
+        safeReason
+          ? `<div style="background:#fef5f4;border:1px solid #fed7d2;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+               <span style="display:block;font-size:13px;font-weight:700;color:#b91c1c;margin-bottom:4px;">Stated Reason:</span>
+               <p style="margin:0;font-size:14px;color:#4b5545;line-height:1.5;">${safeReason}</p>
+             </div>`
+          : ""
+      }
+
+      <div style="background:#f6f8f5;border-radius:10px;padding:16px 20px;margin-bottom:24px;">
+        <h4 style="margin:0 0 6px;font-size:14px;color:#142800;font-weight:600;">Account Appeal Process</h4>
+        <p style="margin:0;font-size:13px;color:#555e50;line-height:1.5;">
+          If you believe this suspension was made in error or would like to submit an appeal, please reply directly to this email or contact <a href="mailto:support@belizechain.org" style="color:#2f6e1e;font-weight:600;text-decoration:none;">support@belizechain.org</a> with your registered email and account details.
+        </p>
+      </div>
+
+      <p style="color:#70796a;margin:0;font-size:13px;line-height:1.5;">
+        Until an appeal is reviewed, you will not be able to offer or book rides on the platform.
+      </p>
+    </div>
+    <div style="background:#f6f6f4;padding:20px;text-align:center;border-top:1px solid #e7e8e3;">
+      <p style="color:#9aa092;font-size:11px;margin:0;">kanek Safety &amp; Trust &bull; Belize</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildReactivationEmailHtml(params: { userName: string }): string {
+  const safeName = escapeHtml(params.userName);
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #e7e8e3;">
+    <div style="background:#142800;padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-family:'Work Sans',Arial,sans-serif;margin:0;font-size:26px;letter-spacing:0.5px;">kanek</h1>
+      <p style="color:#a7c882;font-size:13px;margin:6px 0 0;font-weight:500;">Community Mobility for Belize</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <h2 style="color:#142800;font-family:'Work Sans',Arial,sans-serif;margin:0 0 12px;font-size:20px;">Your Account Has Been Reactivated</h2>
+      <p style="color:#4b5545;margin:0 0 16px;font-size:15px;line-height:1.6;">Hello ${safeName},</p>
+      <p style="color:#4b5545;margin:0 0 20px;font-size:15px;line-height:1.6;">
+        We are pleased to inform you that your Kanek account has been reviewed and restored to active status. You can now log into the mobile app and resume using all platform features.
+      </p>
+      <p style="color:#555e50;margin:0;font-size:14px;line-height:1.6;">
+        Thank you for your cooperation and commitment to community safety.
+      </p>
+    </div>
+    <div style="background:#f6f6f4;padding:20px;text-align:center;border-top:1px solid #e7e8e3;">
+      <p style="color:#9aa092;font-size:11px;margin:0;">kanek &bull; Belize</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildStrikeEmailHtml(params: {
+  userName: string;
+  strikeType: string;
+  reason: string;
+  softCount: number;
+  hardCount: number;
+  newStatus?: string | null;
+}): string {
+  const safeName = escapeHtml(params.userName);
+  const safeReason = escapeHtml(params.reason);
+  const isHard = params.strikeType === "hard";
+  const titleColor = isHard ? "#b91c1c" : "#b45309";
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #e7e8e3;">
+    <div style="background:#142800;padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-family:'Work Sans',Arial,sans-serif;margin:0;font-size:26px;letter-spacing:0.5px;">kanek</h1>
+      <p style="color:#a7c882;font-size:13px;margin:6px 0 0;font-weight:500;">Community Mobility for Belize</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <h2 style="color:${titleColor};font-family:'Work Sans',Arial,sans-serif;margin:0 0 12px;font-size:20px;">
+        ${isHard ? "Hard Penalty Strike Issued" : "Penalty Strike Notice"}
+      </h2>
+      <p style="color:#4b5545;margin:0 0 16px;font-size:15px;line-height:1.6;">Hello ${safeName},</p>
+      <p style="color:#4b5545;margin:0 0 20px;font-size:15px;line-height:1.6;">
+        A ${params.strikeType} strike has been issued to your Kanek account following a moderation review of community safety guidelines.
+      </p>
+
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <span style="display:block;font-size:13px;font-weight:700;color:#92400e;margin-bottom:4px;">Violation Reason:</span>
+        <p style="margin:0;font-size:14px;color:#451a03;line-height:1.5;">${safeReason}</p>
+      </div>
+
+      <div style="background:#f6f8f5;border-radius:10px;padding:16px 20px;margin-bottom:24px;">
+        <h4 style="margin:0 0 8px;font-size:14px;color:#142800;font-weight:600;">Current Account Strike Balance</h4>
+        <p style="margin:0;font-size:13px;color:#555e50;line-height:1.6;">
+          <strong>Soft Strikes:</strong> ${params.softCount} / 3 before restrictions<br>
+          <strong>Hard Strikes:</strong> ${params.hardCount} / 1 before suspension
+        </p>
+        ${
+          params.newStatus === "suspended"
+            ? `<p style="margin:8px 0 0;font-size:13px;color:#b91c1c;font-weight:600;">Your account has been suspended due to strike accumulation.</p>`
+            : params.newStatus === "restricted"
+            ? `<p style="margin:8px 0 0;font-size:13px;color:#b45309;font-weight:600;">Your account privileges have been restricted due to 3 soft strikes.</p>`
+            : ""
+        }
+      </div>
+
+      <p style="color:#555e50;margin:0 0 8px;font-size:14px;line-height:1.6;">
+        If you have questions or wish to appeal this strike, please reply directly or email <a href="mailto:support@belizechain.org" style="color:#2f6e1e;text-decoration:none;font-weight:600;">support@belizechain.org</a>.
+      </p>
+    </div>
+    <div style="background:#f6f6f4;padding:20px;text-align:center;border-top:1px solid #e7e8e3;">
+      <p style="color:#9aa092;font-size:11px;margin:0;">kanek Safety &amp; Trust &bull; Belize</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 async function getMissingDocumentsForUser(
   service: SupabaseClient,
   userId: string,
@@ -1652,6 +2150,29 @@ async function handleReviewDriver({ service, adminUserId }: AdminContext, payloa
     reason,
   });
 
+  // Notify driver via in-app and email
+  const { data: profile } = await service
+    .from("profiles")
+    .select("push_token, email, first_name, last_name")
+    .eq("id", driverId)
+    .maybeSingle();
+
+  if (profile) {
+    const driverName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Kanek Driver";
+    const notifType = status === "approved" ? "driver_application_approved" : "driver_application_rejected";
+    const title = status === "approved" ? "Driver Application Approved" : "Driver Application Rejected";
+    const body = status === "approved"
+      ? "Congratulations! Your driver application has been approved."
+      : `Your driver application was rejected. Reason: ${reason ?? "N/A"}`;
+    await notifyUserAccount(service, driverId, { type: notifType, title, body, data: { status } });
+    if (profile.email) {
+      const emailHtml = status === "approved"
+        ? buildDriverApprovalEmailHtml({ userName: driverName })
+        : buildDeclineEmailHtml({ userName: driverName, reasons: [reason ?? "Rejected by admin"], role: "driver" });
+      await sendResendEmailNotification({ to: profile.email, subject: title, html: emailHtml });
+    }
+  }
+
   return { ok: true };
 }
 
@@ -1733,40 +2254,26 @@ async function handleReviewRiderDocument(
 }
 
 async function handleCommunityList({ service }: AdminContext) {
-  const [reports, gas, waitlist] = await Promise.all([
-    service
-      .from("road_reports")
-      .select("id, reporter_id, type, lat, lng, description, upvotes, expires_at, created_at")
-      .order("created_at", { ascending: false })
-      .limit(200),
-    service
-      .from("gas_prices")
-      .select("id, reporter_id, station_name, station_lat, station_lng, regular_cents, premium_cents, diesel_cents, verified_count, created_at")
-      .order("created_at", { ascending: false })
-      .limit(200),
-    service
-      .from("waitlist")
-      .select("id, post_id, user_id, notified, created_at")
-      .order("created_at", { ascending: false })
-      .limit(200),
-  ]);
+  const gas = await service
+    .from("gas_prices")
+    .select("id, reporter_id, station_name, station_lat, station_lng, regular_cents, premium_cents, diesel_cents, verified_count, created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
 
-  if (reports.error || gas.error || waitlist.error) {
+  if (gas.error) {
     throw new HttpError(
       500,
-      reports.error?.message ?? gas.error?.message ?? waitlist.error?.message ?? "Failed to load community data."
+      gas.error.message ?? "Failed to load community data."
     );
   }
 
   return {
-    reports: reports.data ?? [],
     gas: gas.data ?? [],
-    waitlist: waitlist.data ?? [],
   };
 }
 
 async function handleFinanceList({ service }: AdminContext) {
-  const [transactions, receipts, donationTotals] = await Promise.all([
+  const [transactions, receipts, donationTotals, completedBookings] = await Promise.all([
     service
       .from("ekyash_transactions")
       .select("id, contract_id, payer_id, payee_id, order_id, amount_cents, platform_fee_cents, donation_cents, currency, status, created_at")
@@ -1774,26 +2281,49 @@ async function handleFinanceList({ service }: AdminContext) {
       .limit(200),
     service
       .from("email_receipts")
-      .select("id, user_id, contract_id, email_to, type, status, error, created_at")
-      .order("created_at", { ascending: false })
+      .select("id, user_id, contract_id, email_to, type, status, error, sent_at, contracts(booking_id)")
+      .order("sent_at", { ascending: false })
       .limit(200),
     service
       .from("donation_totals")
       .select("total_cents, updated_at")
       .eq("id", 1)
       .maybeSingle(),
+    service
+      .from("contracts")
+      .select("id, post_id, booking_id, parties, origin_address, dest_address, agreed_price_cents, status, created_at, completed_at")
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .limit(200),
   ]);
 
-  if (transactions.error || receipts.error || donationTotals.error) {
+  if (transactions.error || receipts.error || donationTotals.error || completedBookings.error) {
     throw new HttpError(
       500,
-      transactions.error?.message ?? receipts.error?.message ?? donationTotals.error?.message ?? "Failed to load finance data."
+      transactions.error?.message ?? receipts.error?.message ?? donationTotals.error?.message ?? completedBookings.error?.message ?? "Failed to load finance data."
     );
   }
 
+  // Flatten the receipt join so booking_id is top-level
+  const flatReceipts = (receipts.data ?? []).map((r: Record<string, unknown>) => {
+    const contract = r.contracts as { booking_id?: string } | null;
+    return {
+      id: r.id,
+      user_id: r.user_id,
+      contract_id: r.contract_id,
+      booking_id: contract?.booking_id ?? null,
+      email_to: r.email_to,
+      type: r.type,
+      status: r.status,
+      error: r.error,
+      sent_at: r.sent_at,
+    };
+  });
+
   return {
     transactions: transactions.data ?? [],
-    receipts: receipts.data ?? [],
+    receipts: flatReceipts,
+    completedBookings: completedBookings.data ?? [],
     donationTotals: donationTotals.data ?? null,
   };
 }
@@ -1915,7 +2445,6 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const context = await requireAdmin(request);
     const payload = await readPayload(request);
     const path = normalizePath(new URL(request.url).pathname);
 
@@ -1923,28 +2452,33 @@ Deno.serve(async (request) => {
 
     switch (path) {
       case "/dashboard/overview":
-        responseBody = await handleDashboardOverview(context);
+        responseBody = await handleDashboardOverview(await requireAdmin(request));
         break;
       case "/bookings/list":
-        responseBody = await handleBookingsList(context);
+        responseBody = await handleBookingsList(await requireAdmin(request));
         break;
       case "/bookings/contract-events":
-        responseBody = await handleContractEvents(context, payload);
+        responseBody = await handleContractEvents(await requireAdmin(request), payload);
         break;
       case "/community/list":
-        responseBody = await handleCommunityList(context);
+        responseBody = await handleCommunityList(await requireAdmin(request));
         break;
       case "/content/list":
-        responseBody = await handleContentList(context);
+        responseBody = await handleContentList(await requireAdmin(request));
         break;
       case "/content/cancel-post":
-        responseBody = await handleCancelPost(context, payload);
+        responseBody = await handleCancelPost(await requireAdmin(request), payload);
         break;
       case "/documents/resolve":
-        responseBody = await handleResolveDocument(context, payload);
+        responseBody = await handleResolveDocument(await requireAdmin(request), payload);
         break;
+      case "/strikes/report": {
+        const userReportContext = await requireUser(request);
+        responseBody = await handleUserReportStrike(userReportContext, payload);
+        break;
+      }
       case "/finance/list":
-        responseBody = await handleFinanceList(context);
+        responseBody = await handleFinanceList(await requireAdmin(request));
         break;
       case "/lookup/names":
         responseBody = await handleLookupNames(context, payload);

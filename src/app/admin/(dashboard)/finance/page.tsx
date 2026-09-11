@@ -25,11 +25,25 @@ type EmailReceipt = {
   id: string;
   user_id: string;
   contract_id: string | null;
+  booking_id: string | null;
   email_to: string;
   type: string;
   status: string;
   error: string | null;
+  sent_at: string;
+};
+
+type CompletedBooking = {
+  id: string;
+  post_id: string;
+  booking_id: string;
+  parties: string[];
+  origin_address: string | null;
+  dest_address: string | null;
+  agreed_price_cents: number;
+  status: string;
   created_at: string;
+  completed_at: string | null;
 };
 
 type DonationTotal = {
@@ -45,24 +59,28 @@ export default function FinancePage() {
   const [tab, setTab] = useState<Tab>("transactions");
   const [txns, setTxns] = useState<EkyashTx[]>([]);
   const [receipts, setReceipts] = useState<EmailReceipt[]>([]);
+  const [completedBookings, setCompletedBookings] = useState<CompletedBooking[]>([]);
   const [donationTotals, setDonationTotals] = useState<DonationTotal | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTxn, setSelectedTxn] = useState<EkyashTx | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<EmailReceipt | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<CompletedBooking | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getAdminFinanceData<EkyashTx, EmailReceipt, DonationTotal>();
+      const data = await getAdminFinanceData<EkyashTx, EmailReceipt, DonationTotal, CompletedBooking>();
       setTxns(data.transactions);
       setReceipts(data.receipts);
+      setCompletedBookings(data.completedBookings);
       setDonationTotals(data.donationTotals);
     } catch (error) {
       setLoadError(getAdminActionErrorMessage(error));
       setTxns([]);
       setReceipts([]);
+      setCompletedBookings([]);
       setDonationTotals(null);
     } finally {
       setLoading(false);
@@ -77,13 +95,15 @@ export default function FinancePage() {
     ...txns.map((t) => t.payer_id),
     ...txns.map((t) => t.payee_id),
     ...receipts.map((r) => r.user_id),
-  ], [txns, receipts]);
+    ...completedBookings.flatMap((b) => b.parties),
+  ], [txns, receipts, completedBookings]);
   const { userName } = useResolveNames(allUserIds);
 
   const statusColor = (status: string) => {
     const map: Record<string, string> = {
       pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
       approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+      completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
       cancelled: "bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400",
       refunded: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
       sent: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
@@ -93,7 +113,9 @@ export default function FinancePage() {
   };
 
   // Aggregations from loaded data
-  const totalVolume = txns.reduce((s, t) => s + t.amount_cents, 0);
+  const totalPaymentVolume = txns.reduce((s, t) => s + t.amount_cents, 0);
+  const totalBookingVolume = completedBookings.reduce((s, b) => s + b.agreed_price_cents, 0);
+  const totalVolume = totalPaymentVolume + totalBookingVolume;
   const totalFees = txns.reduce((s, t) => s + t.platform_fee_cents, 0);
   const totalDonations = txns.reduce((s, t) => s + t.donation_cents, 0);
 
@@ -105,24 +127,33 @@ export default function FinancePage() {
         </div>
       )}
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-lg border p-3">
-          <p className="text-xs text-muted-foreground">Volume (loaded)</p>
+          <p className="text-xs text-muted-foreground">Total Volume</p>
           <p className="text-lg font-semibold">{fmt(totalVolume)}</p>
+        </div>
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-muted-foreground">Booking Volume</p>
+          <p className="text-lg font-semibold">{fmt(totalBookingVolume)}</p>
+          <p className="text-[10px] text-muted-foreground">{completedBookings.length} completed</p>
+        </div>
+        <div className="rounded-lg border p-3">
+          <p className="text-xs text-muted-foreground">Payment Volume</p>
+          <p className="text-lg font-semibold">{fmt(totalPaymentVolume)}</p>
+          <p className="text-[10px] text-muted-foreground">{txns.length} transactions</p>
         </div>
         <div className="rounded-lg border p-3">
           <p className="text-xs text-muted-foreground">Platform Fees</p>
           <p className="text-lg font-semibold">{fmt(totalFees)}</p>
         </div>
         <div className="rounded-lg border p-3">
-          <p className="text-xs text-muted-foreground">Donations (txns)</p>
+          <p className="text-xs text-muted-foreground">Donations</p>
           <p className="text-lg font-semibold">{fmt(totalDonations)}</p>
-        </div>
-        <div className="rounded-lg border p-3">
-          <p className="text-xs text-muted-foreground">Donation Total (DB)</p>
-          <p className="text-lg font-semibold">
-            {donationTotals ? fmt(donationTotals.total_cents) : "—"}
-          </p>
+          {donationTotals && (
+            <p className="text-[10px] text-muted-foreground">
+              Lifetime: {fmt(donationTotals.total_cents)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -130,7 +161,7 @@ export default function FinancePage() {
         {(["transactions", "receipts", "donations"] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => { setTab(t); setSelectedTxn(null); setSelectedReceipt(null); }}
+            onClick={() => { setTab(t); setSelectedTxn(null); setSelectedReceipt(null); setSelectedBooking(null); }}
             className={`rounded-md px-3 py-1.5 text-sm capitalize transition-colors ${
               tab === t
                 ? "bg-accent-green text-white"
@@ -152,6 +183,7 @@ export default function FinancePage() {
         <>
           {tab === "transactions" && (
             <div className="space-y-4">
+              {/* Selected ekyash transaction detail */}
               {selectedTxn && (
                 <div className="rounded-lg border bg-card p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -173,6 +205,80 @@ export default function FinancePage() {
                   </div>
                 </div>
               )}
+
+              {/* Selected completed booking detail */}
+              {selectedBooking && (
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium">Completed Booking Details</h3>
+                    <button onClick={() => setSelectedBooking(null)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+                  </div>
+                  <div className="grid gap-2 text-sm sm:grid-cols-2">
+                    <div><span className="text-muted-foreground">Contract ID: </span><span className="font-mono text-xs">{selectedBooking.id}</span></div>
+                    <div><span className="text-muted-foreground">Booking ID: </span><span className="font-mono text-xs">{selectedBooking.booking_id}</span></div>
+                    <div><span className="text-muted-foreground">Origin: </span>{selectedBooking.origin_address ?? "—"}</div>
+                    <div><span className="text-muted-foreground">Destination: </span>{selectedBooking.dest_address ?? "—"}</div>
+                    <div><span className="text-muted-foreground">Agreed Price: </span><span className="font-semibold">{fmt(selectedBooking.agreed_price_cents)}</span></div>
+                    <div><span className="text-muted-foreground">Status: </span><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(selectedBooking.status)}`}>{selectedBooking.status}</span></div>
+                    <div><span className="text-muted-foreground">Parties: </span>{selectedBooking.parties.map((p) => userName(p)).join(", ")}</div>
+                    <div><span className="text-muted-foreground">Completed: </span>{selectedBooking.completed_at ? new Date(selectedBooking.completed_at).toLocaleString() : "—"}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Completed Bookings table */}
+              {completedBookings.length > 0 && (
+                <>
+                  <h3 className="text-sm font-medium text-muted-foreground">Completed Bookings</h3>
+                  <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/40">
+                        <th className="px-3 py-2 text-left font-medium">Parties</th>
+                        <th className="px-3 py-2 text-left font-medium">Route</th>
+                        <th className="px-3 py-2 text-right font-medium">Price</th>
+                        <th className="px-3 py-2 text-left font-medium">Status</th>
+                        <th className="px-3 py-2 text-left font-medium">Completed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completedBookings.map((b) => (
+                        <tr
+                          key={b.id}
+                          onClick={() => setSelectedBooking(selectedBooking?.id === b.id ? null : b)}
+                          className={`cursor-pointer border-b transition-colors hover:bg-muted/30 ${selectedBooking?.id === b.id ? "bg-muted/40" : ""}`}
+                        >
+                          <td className="px-3 py-2">
+                            {b.parties.map((p) => userName(p)).join(" & ")}
+                          </td>
+                          <td className="px-3 py-2 max-w-[200px] truncate text-muted-foreground">
+                            {b.origin_address && b.dest_address
+                              ? `${b.origin_address} → ${b.dest_address}`
+                              : b.origin_address ?? b.dest_address ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono">
+                            {fmt(b.agreed_price_cents)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(b.status)}`}
+                            >
+                              {b.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {b.completed_at ? new Date(b.completed_at).toLocaleDateString() : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
+                </>
+              )}
+
+              {/* eKyash Transactions table */}
+              <h3 className="text-sm font-medium text-muted-foreground">Payment Transactions</h3>
               <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
                 <thead>
@@ -220,7 +326,7 @@ export default function FinancePage() {
                       </td>
                     </tr>
                   ))}
-                  {txns.length === 0 && (
+                  {txns.length === 0 && completedBookings.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
                         No transactions found.
@@ -245,10 +351,11 @@ export default function FinancePage() {
                     <div><span className="text-muted-foreground">Receipt ID: </span><span className="font-mono text-xs">{selectedReceipt.id}</span></div>
                     <div><span className="text-muted-foreground">User: </span>{userName(selectedReceipt.user_id)}</div>
                     <div><span className="text-muted-foreground">Contract: </span><span className="font-mono text-xs">{selectedReceipt.contract_id ?? "—"}</span></div>
+                    <div><span className="text-muted-foreground">Booking: </span><span className="font-mono text-xs">{selectedReceipt.booking_id ?? "—"}</span></div>
                     <div><span className="text-muted-foreground">Email To: </span>{selectedReceipt.email_to}</div>
                     <div><span className="text-muted-foreground">Type: </span>{selectedReceipt.type}</div>
                     <div><span className="text-muted-foreground">Status: </span><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(selectedReceipt.status)}`}>{selectedReceipt.status}</span></div>
-                    <div><span className="text-muted-foreground">Created: </span>{new Date(selectedReceipt.created_at).toLocaleString()}</div>
+                    <div><span className="text-muted-foreground">Sent: </span>{new Date(selectedReceipt.sent_at).toLocaleString()}</div>
                   </div>
                   {selectedReceipt.error && (
                     <div className="pt-2 border-t">
@@ -264,9 +371,10 @@ export default function FinancePage() {
                   <tr className="border-b bg-muted/40">
                     <th className="px-3 py-2 text-left font-medium">To</th>
                     <th className="px-3 py-2 text-left font-medium">Type</th>
+                    <th className="px-3 py-2 text-left font-medium">Booking</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                     <th className="px-3 py-2 text-left font-medium">Error</th>
-                    <th className="px-3 py-2 text-left font-medium">Date</th>
+                    <th className="px-3 py-2 text-left font-medium">Sent</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -284,6 +392,9 @@ export default function FinancePage() {
                           {r.type}
                         </span>
                       </td>
+                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                        {r.booking_id ? r.booking_id.slice(0, 8) : "—"}
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(r.status)}`}
@@ -295,13 +406,13 @@ export default function FinancePage() {
                         {r.error ?? "—"}
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">
-                        {new Date(r.created_at).toLocaleDateString()}
+                        {new Date(r.sent_at).toLocaleDateString()}
                       </td>
                     </tr>
                   ))}
                   {receipts.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                         No email receipts found.
                       </td>
                     </tr>

@@ -243,18 +243,17 @@ export async function getAdminUserDetail<TProfile, TDriverDetail, TDriverDocumen
   }>("/users/detail", { userId });
 }
 
-export async function getAdminCommunityData<TRoadReport, TGasPrice, TWaitlistEntry>() {
+export async function getAdminCommunityData<TGasPrice = Record<string, unknown>>() {
   return callAdminBackend<{
-    reports: TRoadReport[];
     gas: TGasPrice[];
-    waitlist: TWaitlistEntry[];
   }>("/community/list", {});
 }
 
-export async function getAdminFinanceData<TTransaction, TReceipt, TDonationTotal>() {
+export async function getAdminFinanceData<TTransaction, TReceipt, TDonationTotal, TCompletedBooking = Record<string, unknown>>() {
   return callAdminBackend<{
     transactions: TTransaction[];
     receipts: TReceipt[];
+    completedBookings: TCompletedBooking[];
     donationTotals: TDonationTotal | null;
   }>("/finance/list", {});
 }

@@ -104,9 +104,9 @@
 | `contract_events` | ✓ | — | Bookings |
 | `posts` | ✓ | ✓ (cancel) | Content, name resolution |
 | `notifications` | ✓ | — | Content |
-| `road_reports` | ✓ | — | Community |
+| `road_reports` | — | — | Deprecated / Dropped |
 | `gas_prices` | ✓ | — | Community |
-| `waitlist` | ✓ | — | Community |
+| `waitlist` | — | — | Deprecated / Dropped |
 | `ekyash_transactions` | ✓ | — | Finance |
 | `email_receipts` | ✓ | — | Finance |
 | `donation_totals` | ✓ | — | Finance |
