@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Search,
   X,
   ArrowRight,
+  ArrowDown,
   Clock,
   User,
   Car,
@@ -19,6 +21,8 @@ import {
   Navigation,
   Compass,
   CalendarCheck,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   getAdminActionErrorMessage,
@@ -103,7 +107,7 @@ function getPersonDisplayName(
   if (profile) {
     const full = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim();
     if (full) return full;
-    if (profile.email) return profile.email.split("@")[0];
+    if (profile.email) return profile.email;
     if (profile.phone) return profile.phone;
   }
   if (fallbackId) {
@@ -283,12 +287,43 @@ function synthesizeAuditItemsFromRaw(
 }
 
 export default function BookingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-20 animate-pulse rounded-lg border bg-muted/40" />
+            ))}
+          </div>
+          <div className="h-14 animate-pulse rounded-lg border bg-muted/40" />
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-16 animate-pulse rounded-lg border bg-muted/40" />
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <BookingsPageInner />
+    </Suspense>
+  );
+}
+
+function BookingsPageInner() {
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? searchParams.get("search") ?? "";
+  const urlBookingId = searchParams.get("id") ?? "";
+
   const [auditItems, setAuditItems] = useState<BookingAuditItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<BookingAuditItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [copiedBookingId, setCopiedBookingId] = useState(false);
+  const [copiedDriverId, setCopiedDriverId] = useState(false);
+  const [copiedRiderId, setCopiedRiderId] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -320,6 +355,26 @@ export default function BookingsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (urlQuery) {
+      setSearchQuery(urlQuery);
+    }
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (urlBookingId && auditItems.length > 0) {
+      const target = auditItems.find(
+        (it) =>
+          it.id === urlBookingId ||
+          it.bookingId === urlBookingId ||
+          it.contractId === urlBookingId
+      );
+      if (target) {
+        setSelectedItem(target);
+      }
+    }
+  }, [urlBookingId, auditItems]);
 
   /* ── Filtered Rides / Bookings ── */
   const filteredAuditItems = useMemo(() => {
@@ -609,8 +664,9 @@ export default function BookingsPage() {
                           <div className="truncate font-medium text-foreground" title={item.originAddress ?? ""}>
                             {item.originAddress ?? "Origin"}
                           </div>
-                          <div className="truncate text-xs text-muted-foreground" title={item.destAddress ?? ""}>
-                            &darr; {item.destAddress ?? "Destination"}
+                          <div className="truncate text-xs text-muted-foreground flex items-center gap-1" title={item.destAddress ?? ""}>
+                            <ArrowDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{item.destAddress ?? "Destination"}</span>
                           </div>
                         </>
                       ) : (
@@ -681,10 +737,30 @@ export default function BookingsPage() {
                     </h3>
                     {getStatusBadge(selectedItem.status)}
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 font-mono">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-0.5 font-mono">
                     <span>Booking: {selectedItem.bookingId ?? "N/A"}</span>
+                    {selectedItem.bookingId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedItem.bookingId) {
+                            void navigator.clipboard.writeText(selectedItem.bookingId);
+                            setCopiedBookingId(true);
+                            setTimeout(() => setCopiedBookingId(false), 2000);
+                          }
+                        }}
+                        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded hover:bg-muted border border-border/60 text-[10px]"
+                        title="Copy Booking ID"
+                      >
+                        {copiedBookingId ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+                        <span>{copiedBookingId ? "Copied" : "Copy"}</span>
+                      </button>
+                    )}
                     {selectedItem.contractId && (
-                      <span>&bull; Contract: {selectedItem.contractId}</span>
+                      <>
+                        <span className="text-border">&bull;</span>
+                        <span>Contract: {selectedItem.contractId}</span>
+                      </>
                     )}
                   </div>
                 </div>
@@ -744,67 +820,85 @@ export default function BookingsPage() {
                     )}
                   </div>
 
-                  {selectedItem.driver ? (
-                    <div className="space-y-2 text-xs">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground">
-                          {selectedItem.driver.name}
-                        </div>
-                        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
-                          User ID: <span className="text-foreground select-all">{selectedItem.driver.id}</span>
-                        </div>
-                        {selectedItem.driver.email && (
-                          <div className="text-muted-foreground">{selectedItem.driver.email}</div>
-                        )}
-                        {selectedItem.driver.phone && (
-                          <div className="text-muted-foreground">{selectedItem.driver.phone}</div>
-                        )}
-                      </div>
-
-                      {/* Vehicle specs */}
-                      <div className="rounded border bg-card p-2.5 space-y-1 mt-2">
-                        <div className="font-semibold text-foreground text-[11px] uppercase tracking-wider text-muted-foreground">
-                          Vehicle Information
-                        </div>
-                        {selectedItem.driver.vehicle ? (
-                          <div className="space-y-0.5">
-                            <div>
-                              <strong>Vehicle:</strong> {selectedItem.driver.vehicle.year ?? ""}{" "}
-                              {selectedItem.driver.vehicle.make ?? ""}{" "}
-                              {selectedItem.driver.vehicle.model ?? ""}
-                            </div>
-                            <div>
-                              <strong>Color:</strong> {selectedItem.driver.vehicle.color ?? "—"}
-                            </div>
-                            <div>
-                              <strong>Plate:</strong>{" "}
-                              <span className="font-mono font-bold text-foreground">
-                                {selectedItem.driver.vehicle.plate ?? "—"}
-                              </span>
-                            </div>
+                  {selectedItem.driver ? (() => {
+                    const driver = selectedItem.driver;
+                    return (
+                      <div className="space-y-2 text-xs">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">
+                            {driver.name}
                           </div>
-                        ) : (
-                          <p className="text-muted-foreground italic">No registered vehicle info on this record.</p>
-                        )}
-                      </div>
-
-                      {/* Rating */}
-                      <div className="flex items-center gap-3 pt-1 text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                          <span className="font-medium text-foreground">
-                            {selectedItem.driver.ratingAvg !== null && selectedItem.driver.ratingAvg !== undefined
-                              ? selectedItem.driver.ratingAvg.toFixed(1)
-                              : "New"}
-                          </span>
-                        </div>
-                        {selectedItem.driver.punctualityPct !== null &&
-                          selectedItem.driver.punctualityPct !== undefined && (
-                            <div>Punctuality: {selectedItem.driver.punctualityPct}%</div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="font-mono text-[11px] text-muted-foreground">
+                              ID: <span className="text-foreground select-all">{driver.id}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(driver.id);
+                                setCopiedDriverId(true);
+                                setTimeout(() => setCopiedDriverId(false), 2000);
+                              }}
+                              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded hover:bg-muted border border-border/60 text-[10px]"
+                              title="Copy Driver ID"
+                            >
+                              {copiedDriverId ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+                              <span>{copiedDriverId ? "Copied" : "Copy"}</span>
+                            </button>
+                          </div>
+                          {driver.email && (
+                            <div className="text-muted-foreground">{driver.email}</div>
                           )}
+                          {driver.phone && (
+                            <div className="text-muted-foreground">{driver.phone}</div>
+                          )}
+                        </div>
+
+                        {/* Vehicle specs */}
+                        <div className="rounded border bg-card p-2.5 space-y-1 mt-2">
+                          <div className="font-semibold text-foreground text-[11px] uppercase tracking-wider text-muted-foreground">
+                            Vehicle Information
+                          </div>
+                          {driver.vehicle ? (
+                            <div className="space-y-0.5">
+                              <div>
+                                <strong>Vehicle:</strong> {driver.vehicle.year ?? ""}{" "}
+                                {driver.vehicle.make ?? ""}{" "}
+                                {driver.vehicle.model ?? ""}
+                              </div>
+                              <div>
+                                <strong>Color:</strong> {driver.vehicle.color ?? "—"}
+                              </div>
+                              <div>
+                                <strong>Plate:</strong>{" "}
+                                <span className="font-mono font-bold text-foreground">
+                                  {driver.vehicle.plate ?? "—"}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground italic">No registered vehicle info on this record.</p>
+                          )}
+                        </div>
+
+                        {/* Rating */}
+                        <div className="flex items-center gap-3 pt-1 text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                            <span className="font-medium text-foreground">
+                              {driver.ratingAvg !== null && driver.ratingAvg !== undefined
+                                ? driver.ratingAvg.toFixed(1)
+                                : "New"}
+                            </span>
+                          </div>
+                          {driver.punctualityPct !== null &&
+                            driver.punctualityPct !== undefined && (
+                              <div>Punctuality: {driver.punctualityPct}%</div>
+                            )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
+                    );
+                  })() : (
                     <p className="text-xs text-muted-foreground italic">No driver assigned to this record.</p>
                   )}
                 </div>
@@ -830,51 +924,69 @@ export default function BookingsPage() {
                     )}
                   </div>
 
-                  {selectedItem.rider ? (
-                    <div className="space-y-2 text-xs">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground">
-                          {selectedItem.rider.name}
-                        </div>
-                        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
-                          User ID: <span className="text-foreground select-all">{selectedItem.rider.id}</span>
-                        </div>
-                        {selectedItem.rider.email && (
-                          <div className="text-muted-foreground">{selectedItem.rider.email}</div>
-                        )}
-                        {selectedItem.rider.phone && (
-                          <div className="text-muted-foreground">{selectedItem.rider.phone}</div>
-                        )}
-                      </div>
-
-                      <div className="rounded border bg-card p-2.5 space-y-1 mt-2">
-                        <div className="font-semibold text-foreground text-[11px] uppercase tracking-wider text-muted-foreground">
-                          Emergency Contact
-                        </div>
+                  {selectedItem.rider ? (() => {
+                    const rider = selectedItem.rider;
+                    return (
+                      <div className="space-y-2 text-xs">
                         <div>
-                          {selectedItem.rider.emergencyContact ?? (
-                            <span className="text-muted-foreground italic">None on file</span>
+                          <div className="text-sm font-semibold text-foreground">
+                            {rider.name}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="font-mono text-[11px] text-muted-foreground">
+                              ID: <span className="text-foreground select-all">{rider.id}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(rider.id);
+                                setCopiedRiderId(true);
+                                setTimeout(() => setCopiedRiderId(false), 2000);
+                              }}
+                              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded hover:bg-muted border border-border/60 text-[10px]"
+                              title="Copy Rider ID"
+                            >
+                              {copiedRiderId ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+                              <span>{copiedRiderId ? "Copied" : "Copy"}</span>
+                            </button>
+                          </div>
+                          {rider.email && (
+                            <div className="text-muted-foreground">{rider.email}</div>
+                          )}
+                          {rider.phone && (
+                            <div className="text-muted-foreground">{rider.phone}</div>
+                          )}
+                        </div>
+
+                        <div className="rounded border bg-card p-2.5 space-y-1 mt-2">
+                          <div className="font-semibold text-foreground text-[11px] uppercase tracking-wider text-muted-foreground">
+                            Emergency Contact
+                          </div>
+                          <div>
+                            {rider.emergencyContact ?? (
+                              <span className="text-muted-foreground italic">None on file</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-1 text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                            <span className="font-medium text-foreground">
+                              {rider.ratingAvg !== null && rider.ratingAvg !== undefined
+                                ? rider.ratingAvg.toFixed(1)
+                                : "New"}
+                            </span>
+                          </div>
+                          {rider.accountStatus && (
+                            <div className="capitalize">
+                              Status: <strong>{rider.accountStatus}</strong>
+                            </div>
                           )}
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-3 pt-1 text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                          <span className="font-medium text-foreground">
-                            {selectedItem.rider.ratingAvg !== null && selectedItem.rider.ratingAvg !== undefined
-                              ? selectedItem.rider.ratingAvg.toFixed(1)
-                              : "New"}
-                          </span>
-                        </div>
-                        {selectedItem.rider.accountStatus && (
-                          <div className="capitalize">
-                            Status: <strong>{selectedItem.rider.accountStatus}</strong>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
+                    );
+                  })() : (
                     <p className="text-xs text-muted-foreground italic">No rider assigned to this record.</p>
                   )}
                 </div>
@@ -911,6 +1023,11 @@ export default function BookingsPage() {
                         <span className="text-muted-foreground">
                           Scheduled: {new Date(selectedItem.departureAt).toLocaleString()}
                         </span>
+                      </div>
+                    )}
+                    {selectedItem.postTitle && (
+                      <div className="text-xs text-muted-foreground pt-1 border-t border-border/40">
+                        Post: <span className="text-foreground font-medium">{selectedItem.postTitle}</span>
                       </div>
                     )}
                   </div>

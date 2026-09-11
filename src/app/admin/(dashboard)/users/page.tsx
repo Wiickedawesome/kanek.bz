@@ -639,6 +639,14 @@ function UsersPageInner() {
                 Unsuspend User
               </ActionButton>
             )}
+            <button
+              type="button"
+              onClick={() => router.push(`/admin/bookings?q=${detailProfile.id}`)}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors inline-flex items-center justify-center gap-1.5 min-h-[26px] bg-muted hover:bg-muted/80 text-foreground border border-input ml-auto"
+            >
+              <span>View User Rides</span>
+              <ArrowRight className="h-3 w-3" />
+            </button>
           </div>
         </div>
 
@@ -1113,7 +1121,8 @@ function UsersPageInner() {
     const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.toLowerCase();
     const email = (p.email ?? "").toLowerCase();
     const phone = (p.phone ?? "").toLowerCase();
-    return name.includes(q) || email.includes(q) || phone.includes(q);
+    const id = p.id.toLowerCase();
+    return name.includes(q) || email.includes(q) || phone.includes(q) || id.includes(q);
   });
 
   const filteredDrivers = driverProfiles.filter((p) => {
@@ -1123,9 +1132,10 @@ function UsersPageInner() {
     const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.toLowerCase();
     const email = (p.email ?? "").toLowerCase();
     const phone = (p.phone ?? "").toLowerCase();
+    const id = p.id.toLowerCase();
     const dd = driverDetails.find((d) => d.id === p.id);
     const vehicle = `${dd?.vehicle_make ?? ""} ${dd?.vehicle_model ?? ""} ${dd?.vehicle_plate ?? ""}`.toLowerCase();
-    return name.includes(q) || email.includes(q) || phone.includes(q) || vehicle.includes(q);
+    return name.includes(q) || email.includes(q) || phone.includes(q) || vehicle.includes(q) || id.includes(q);
   });
 
   const filteredDriverDocs = driverDocs.filter((doc) => {
@@ -1136,7 +1146,8 @@ function UsersPageInner() {
     const email = (profile?.email ?? "").toLowerCase();
     const docType = (doc.document_type ?? "").toLowerCase();
     const docNum = (doc.document_number ?? "").toLowerCase();
-    return name.includes(q) || email.includes(q) || docType.includes(q) || docNum.includes(q);
+    const id = doc.profile_id.toLowerCase();
+    return name.includes(q) || email.includes(q) || docType.includes(q) || docNum.includes(q) || id.includes(q);
   });
 
   const filteredRiderDocs = riderDocs.filter((doc) => {
@@ -1145,7 +1156,8 @@ function UsersPageInner() {
     const profile = profiles.find((p) => p.id === doc.user_id);
     const name = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.toLowerCase();
     const email = (profile?.email ?? "").toLowerCase();
-    return name.includes(q) || email.includes(q);
+    const id = doc.user_id.toLowerCase();
+    return name.includes(q) || email.includes(q) || id.includes(q);
   });
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
@@ -1206,7 +1218,7 @@ function UsersPageInner() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
-              placeholder="Search users..."
+              placeholder="Search name, email, phone, ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-md border border-input bg-background pl-8 pr-7 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -1401,6 +1413,7 @@ function UsersPageInner() {
                               <td className="px-3 py-2">
                                 <div className="font-medium text-foreground">{getUserDisplayName(profile)}</div>
                                 {profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}
+                                <div className="font-mono text-[11px] text-muted-foreground">ID: {doc.profile_id.slice(0, 8)}</div>
                               </td>
                               <td className="px-3 py-2">
                                 <StatusBadge value={doc.document_type} />
@@ -1448,6 +1461,7 @@ function UsersPageInner() {
                               <td className="px-3 py-2">
                                 <div className="font-medium text-foreground">{getUserDisplayName(profile)}</div>
                                 {profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}
+                                <div className="font-mono text-[11px] text-muted-foreground">ID: {doc.user_id.slice(0, 8)}</div>
                               </td>
                               <td className="px-3 py-2">
                                 <span className="inline-flex items-center gap-1 text-xs text-accent-blue font-medium">
