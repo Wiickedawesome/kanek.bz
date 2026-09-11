@@ -2256,8 +2256,8 @@ async function handleReviewRiderDocument(
 async function handleCommunityList({ service }: AdminContext) {
   const gas = await service
     .from("gas_prices")
-    .select("id, reporter_id, station_name, station_lat, station_lng, regular_cents, premium_cents, diesel_cents, verified_count, created_at")
-    .order("created_at", { ascending: false })
+    .select("id, reporter_id, station_name, station_lat, station_lng, regular_cents, premium_cents, diesel_cents, verified_count, reported_at")
+    .order("reported_at", { ascending: false })
     .limit(200);
 
   if (gas.error) {
@@ -2448,29 +2448,32 @@ Deno.serve(async (request) => {
     const payload = await readPayload(request);
     const path = normalizePath(new URL(request.url).pathname);
 
+    const isUserReport = path === "/strikes/report";
+    const context = isUserReport ? null : await requireAdmin(request);
+
     let responseBody: unknown;
 
     switch (path) {
       case "/dashboard/overview":
-        responseBody = await handleDashboardOverview(await requireAdmin(request));
+        responseBody = await handleDashboardOverview(context!);
         break;
       case "/bookings/list":
-        responseBody = await handleBookingsList(await requireAdmin(request));
+        responseBody = await handleBookingsList(context!);
         break;
       case "/bookings/contract-events":
-        responseBody = await handleContractEvents(await requireAdmin(request), payload);
+        responseBody = await handleContractEvents(context!, payload);
         break;
       case "/community/list":
-        responseBody = await handleCommunityList(await requireAdmin(request));
+        responseBody = await handleCommunityList(context!);
         break;
       case "/content/list":
-        responseBody = await handleContentList(await requireAdmin(request));
+        responseBody = await handleContentList(context!);
         break;
       case "/content/cancel-post":
-        responseBody = await handleCancelPost(await requireAdmin(request), payload);
+        responseBody = await handleCancelPost(context!, payload);
         break;
       case "/documents/resolve":
-        responseBody = await handleResolveDocument(await requireAdmin(request), payload);
+        responseBody = await handleResolveDocument(context!, payload);
         break;
       case "/strikes/report": {
         const userReportContext = await requireUser(request);
@@ -2478,46 +2481,46 @@ Deno.serve(async (request) => {
         break;
       }
       case "/finance/list":
-        responseBody = await handleFinanceList(await requireAdmin(request));
+        responseBody = await handleFinanceList(context!);
         break;
       case "/lookup/names":
-        responseBody = await handleLookupNames(context, payload);
+        responseBody = await handleLookupNames(context!, payload);
         break;
       case "/moderation/issue-strike":
-        responseBody = await handleIssueStrike(context, payload);
+        responseBody = await handleIssueStrike(context!, payload);
         break;
       case "/moderation/list":
-        responseBody = await handleModerationList(context);
+        responseBody = await handleModerationList(context!);
         break;
       case "/moderation/review-flag":
-        responseBody = await handleReviewFlag(context, payload);
+        responseBody = await handleReviewFlag(context!, payload);
         break;
       case "/users/account-status":
-        responseBody = await handleAccountStatus(context, payload);
+        responseBody = await handleAccountStatus(context!, payload);
         break;
       case "/users/decline-account":
-        responseBody = await handleDeclineAccount(context, payload);
+        responseBody = await handleDeclineAccount(context!, payload);
         break;
       case "/users/send-reminder":
-        responseBody = await handleSendReminder(context, payload);
+        responseBody = await handleSendReminder(context!, payload);
         break;
       case "/users/process-onboarding-reminders":
-        responseBody = await handleProcessOnboardingReminders(context);
+        responseBody = await handleProcessOnboardingReminders(context!);
         break;
       case "/users/detail":
-        responseBody = await handleUserDetail(context, payload);
+        responseBody = await handleUserDetail(context!, payload);
         break;
       case "/users/list":
-        responseBody = await handleUsersList(context);
+        responseBody = await handleUsersList(context!);
         break;
       case "/users/review-driver":
-        responseBody = await handleReviewDriver(context, payload);
+        responseBody = await handleReviewDriver(context!, payload);
         break;
       case "/users/review-driver-document":
-        responseBody = await handleReviewDriverDocument(context, payload);
+        responseBody = await handleReviewDriverDocument(context!, payload);
         break;
       case "/users/review-rider-document":
-        responseBody = await handleReviewRiderDocument(context, payload);
+        responseBody = await handleReviewRiderDocument(context!, payload);
         break;
       default:
         throw new HttpError(404, `Unknown admin endpoint: ${path}`);
@@ -2530,6 +2533,7 @@ Deno.serve(async (request) => {
     }
 
     console.error(error);
-    return json({ error: "Internal admin API error." }, 500);
+    const message = error instanceof Error ? error.message : String(error);
+    return json({ error: `Internal admin API error: ${message}` }, 500);
   }
 });

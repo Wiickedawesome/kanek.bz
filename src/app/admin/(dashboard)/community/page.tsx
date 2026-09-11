@@ -17,7 +17,7 @@ type GasPrice = {
   premium_cents: number | null;
   diesel_cents: number | null;
   verified_count: number;
-  created_at: string;
+  reported_at: string;
 };
 
 const fmtGas = (cents: number | null) =>
@@ -134,7 +134,7 @@ export default function CommunityPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Reported: </span>
-                  {new Date(selectedGas.created_at).toLocaleString()}
+                  {new Date(selectedGas.reported_at).toLocaleString()}
                 </div>
               </div>
             </div>
@@ -177,7 +177,7 @@ export default function CommunityPage() {
                     </td>
                     <td className="px-3 py-2 text-right">{g.verified_count}</td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {new Date(g.created_at).toLocaleDateString()}
+                      {new Date(g.reported_at).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}

@@ -76,12 +76,14 @@ async function callAdminBackend<T>(path: string, payload: Record<string, unknown
     const body = await response.text();
 
     if (body) {
+      let errorMessage = body;
       try {
         const parsed = JSON.parse(body) as { error?: string; message?: string };
-        throw new Error(parsed.error ?? parsed.message ?? body);
+        errorMessage = parsed.error ?? parsed.message ?? body;
       } catch {
-        throw new Error(body);
+        // body is not JSON, use raw text
       }
+      throw new Error(errorMessage);
     }
 
     throw new Error(`Secure admin backend returned ${response.status}.`);
