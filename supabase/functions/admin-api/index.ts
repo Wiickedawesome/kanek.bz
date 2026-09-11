@@ -2304,6 +2304,118 @@ async function handleFinanceList({ service }: AdminContext) {
     );
   }
 
+  const rawContracts = (completedBookings.data ?? []) as Record<string, unknown>[];
+  const rawTxns = (transactions.data ?? []) as Record<string, unknown>[];
+
+  // 1. Gather all post IDs and booking IDs
+  const postIds = Array.from(new Set(rawContracts.map((c) => c.post_id as string).filter(Boolean)));
+  const bookingIds = Array.from(new Set(rawContracts.map((c) => c.booking_id as string).filter(Boolean)));
+
+  // 2. Gather all involved user IDs
+  const userIds = new Set<string>();
+  rawContracts.forEach((c) => {
+    const parties = (c.parties as string[]) || [];
+    parties.forEach((uid) => uid && userIds.add(uid));
+  });
+  rawTxns.forEach((t) => {
+    if (t.payer_id) userIds.add(t.payer_id as string);
+    if (t.payee_id) userIds.add(t.payee_id as string);
+  });
+  (receipts.data ?? []).forEach((r) => {
+    if (r.user_id) userIds.add(r.user_id as string);
+  });
+
+  const userIdList = Array.from(userIds);
+
+  // 3. Batch query posts, bookings, profiles, and driver_details
+  const [postsRes, bookingsRes, profilesRes, driversRes] = await Promise.all([
+    postIds.length > 0
+      ? service.from("posts").select("id, author_id, type").in("id", postIds)
+      : Promise.resolve({ data: [] }),
+    bookingIds.length > 0
+      ? service.from("bookings").select("id, user_id, role").in("id", bookingIds)
+      : Promise.resolve({ data: [] }),
+    userIdList.length > 0
+      ? service.from("profiles").select("id, first_name, last_name, email, phone").in("id", userIdList)
+      : Promise.resolve({ data: [] }),
+    userIdList.length > 0
+      ? service.from("driver_details").select("id").in("id", userIdList)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  type SimplePost = { id: string; author_id: string; type: string };
+  type SimpleBooking = { id: string; user_id: string; role: string };
+  type SimpleProfile = { id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null };
+
+  const postsMap = new Map((((postsRes.data as SimplePost[]) ?? [])).map((p) => [p.id, p]));
+  const bookingsMap = new Map((((bookingsRes.data as SimpleBooking[]) ?? [])).map((b) => [b.id, b]));
+  const profilesMap = new Map((((profilesRes.data as SimpleProfile[]) ?? [])).map((p) => [p.id, p]));
+  const driverIdSet = new Set(((driversRes.data as { id: string }[]) ?? []).map((d) => d.id));
+
+  function resolvePersonName(uid: string | null | undefined): string {
+    if (!uid) return "—";
+    const p = profilesMap.get(uid);
+    if (!p) return `User (${uid.slice(0, 8)})`;
+    const full = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
+    if (full) return full;
+    if (p.email) return p.email.split("@")[0];
+    if (p.phone) return p.phone;
+    return `User (${uid.slice(0, 8)})`;
+  }
+
+  // 4. Enrich completed bookings with accurate driver & rider
+  const enrichedCompletedBookings = rawContracts.map((c) => {
+    const post = postsMap.get(c.post_id as string);
+    const booking = bookingsMap.get(c.booking_id as string);
+    const parties = (c.parties as string[]) || [];
+
+    let driverId: string | null = null;
+    let riderId: string | null = null;
+
+    if (booking?.role === "rider") {
+      riderId = booking.user_id;
+      driverId = post?.author_id ?? (parties.find((p) => p !== riderId) || null);
+    } else if (booking?.role === "driver") {
+      driverId = booking.user_id;
+      riderId = post?.author_id ?? (parties.find((p) => p !== driverId) || null);
+    } else if (post?.type === "route_offer") {
+      driverId = post.author_id;
+      riderId = booking?.user_id ?? (parties.find((p) => p !== driverId) || null);
+    } else if (post?.type === "route_request") {
+      riderId = post.author_id;
+      driverId = booking?.user_id ?? (parties.find((p) => p !== riderId) || null);
+    } else if (parties.length >= 2) {
+      if (driverIdSet.has(parties[0])) {
+        driverId = parties[0];
+        riderId = parties[1];
+      } else if (driverIdSet.has(parties[1])) {
+        driverId = parties[1];
+        riderId = parties[0];
+      } else {
+        driverId = parties[0];
+        riderId = parties[1];
+      }
+    } else if (parties.length === 1) {
+      driverId = parties[0];
+      riderId = parties[0];
+    }
+
+    return {
+      ...c,
+      driver_id: driverId,
+      driver_name: resolvePersonName(driverId),
+      rider_id: riderId,
+      rider_name: resolvePersonName(riderId),
+    };
+  });
+
+  // 5. Enrich ekyash transactions with payer and payee names
+  const enrichedTransactions = rawTxns.map((t) => ({
+    ...t,
+    payer_name: resolvePersonName(t.payer_id as string),
+    payee_name: resolvePersonName(t.payee_id as string),
+  }));
+
   // Flatten the receipt join so booking_id is top-level
   const flatReceipts = (receipts.data ?? []).map((r: Record<string, unknown>) => {
     const contract = r.contracts as { booking_id?: string } | null;
@@ -2321,9 +2433,9 @@ async function handleFinanceList({ service }: AdminContext) {
   });
 
   return {
-    transactions: transactions.data ?? [],
+    transactions: enrichedTransactions,
     receipts: flatReceipts,
-    completedBookings: completedBookings.data ?? [],
+    completedBookings: enrichedCompletedBookings,
     donationTotals: donationTotals.data ?? null,
   };
 }
@@ -2333,9 +2445,10 @@ function buildDisplayName(profile: {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  phone?: string | null;
 }) {
   const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim();
-  return fullName || profile.email || profile.id.slice(0, 8);
+  return fullName || (profile.email ? profile.email.split("@")[0] : null) || profile.phone || profile.id.slice(0, 8);
 }
 
 async function handleLookupNames({ service }: AdminContext, payload: JsonRecord) {
@@ -2348,7 +2461,7 @@ async function handleLookupNames({ service }: AdminContext, payload: JsonRecord)
     const batch = userIds.slice(index, index + 50);
     const { data, error } = await service
       .from("profiles")
-      .select("id, first_name, last_name, email")
+      .select("id, first_name, last_name, email, phone")
       .in("id", batch);
 
     if (error) {

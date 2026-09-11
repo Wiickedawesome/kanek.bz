@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   getAdminActionErrorMessage,
   getAdminFinanceData,
@@ -12,6 +13,8 @@ type EkyashTx = {
   contract_id: string;
   payer_id: string;
   payee_id: string;
+  payer_name?: string | null;
+  payee_name?: string | null;
   order_id: string | null;
   amount_cents: number;
   platform_fee_cents: number;
@@ -38,6 +41,10 @@ type CompletedBooking = {
   post_id: string;
   booking_id: string;
   parties: string[];
+  driver_id?: string | null;
+  driver_name?: string | null;
+  rider_id?: string | null;
+  rider_name?: string | null;
   origin_address: string | null;
   dest_address: string | null;
   agreed_price_cents: number;
@@ -52,6 +59,26 @@ type DonationTotal = {
 };
 
 type Tab = "transactions" | "receipts" | "donations";
+type TxType = "all" | "cash" | "ekyash";
+type SortField = "date" | "amount" | "type";
+type SortOrder = "asc" | "desc";
+
+type UnifiedTx = {
+  id: string;
+  type: "cash" | "ekyash";
+  payer_id: string | null;
+  payer_name: string | null;
+  payee_id: string | null;
+  payee_name: string | null;
+  amount_cents: number;
+  platform_fee_cents: number;
+  donation_cents: number;
+  status: string;
+  created_at: string;
+  route_label: string | null;
+  rawBooking?: CompletedBooking;
+  rawTxn?: EkyashTx;
+};
 
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -66,6 +93,9 @@ export default function FinancePage() {
   const [selectedReceipt, setSelectedReceipt] = useState<EmailReceipt | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<CompletedBooking | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [txTypeFilter, setTxTypeFilter] = useState<TxType>("all");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,7 +125,7 @@ export default function FinancePage() {
     ...txns.map((t) => t.payer_id),
     ...txns.map((t) => t.payee_id),
     ...receipts.map((r) => r.user_id),
-    ...completedBookings.flatMap((b) => b.parties),
+    ...completedBookings.flatMap((b) => [b.rider_id, b.driver_id, ...b.parties].filter(Boolean) as string[]),
   ], [txns, receipts, completedBookings]);
   const { userName } = useResolveNames(allUserIds);
 
@@ -118,6 +148,94 @@ export default function FinancePage() {
   const totalVolume = totalPaymentVolume + totalBookingVolume;
   const totalFees = txns.reduce((s, t) => s + t.platform_fee_cents, 0);
   const totalDonations = txns.reduce((s, t) => s + t.donation_cents, 0);
+
+  const allUnifiedTxs: UnifiedTx[] = useMemo(() => {
+    const cash: UnifiedTx[] = completedBookings.map((b) => {
+      const riderId = b.rider_id ?? (b.parties.length >= 2 ? b.parties[1] : b.parties[0]) ?? null;
+      const driverId = b.driver_id ?? b.parties[0] ?? null;
+
+      const riderDisplayName = b.rider_name || (riderId ? userName(riderId) : "—");
+      const driverDisplayName = b.driver_name || (driverId ? userName(driverId) : "—");
+
+      return {
+        id: b.id,
+        type: "cash",
+        payer_id: riderId,
+        payer_name: riderDisplayName,
+        payee_id: driverId,
+        payee_name: driverDisplayName,
+        amount_cents: b.agreed_price_cents,
+        platform_fee_cents: 0,
+        donation_cents: 0,
+        status: b.status,
+        created_at: b.completed_at ?? b.created_at,
+        route_label:
+          b.origin_address && b.dest_address
+            ? `${b.origin_address} → ${b.dest_address}`
+            : b.origin_address ?? b.dest_address ?? null,
+        rawBooking: b,
+      };
+    });
+
+    const ekyash: UnifiedTx[] = txns.map((t) => ({
+      id: t.id,
+      type: "ekyash",
+      payer_id: t.payer_id,
+      payer_name: t.payer_name || userName(t.payer_id),
+      payee_id: t.payee_id,
+      payee_name: t.payee_name || userName(t.payee_id),
+      amount_cents: t.amount_cents,
+      platform_fee_cents: t.platform_fee_cents,
+      donation_cents: t.donation_cents,
+      status: t.status,
+      created_at: t.created_at,
+      route_label: null,
+      rawTxn: t,
+    }));
+
+    return [...cash, ...ekyash];
+  }, [completedBookings, txns, userName]);
+
+  const filteredAndSortedTxs = useMemo(() => {
+    let list = allUnifiedTxs;
+    if (txTypeFilter === "cash") {
+      list = list.filter((t) => t.type === "cash");
+    } else if (txTypeFilter === "ekyash") {
+      list = list.filter((t) => t.type === "ekyash");
+    }
+
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === "date") {
+        cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      } else if (sortField === "amount") {
+        cmp = a.amount_cents - b.amount_cents;
+      } else if (sortField === "type") {
+        cmp = a.type.localeCompare(b.type);
+      }
+      return sortOrder === "asc" ? cmp : -cmp;
+    });
+  }, [allUnifiedTxs, txTypeFilter, sortField, sortOrder]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder(field === "date" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-3 w-3 text-muted-foreground/60" />;
+    }
+    return sortOrder === "asc" ? (
+      <ArrowUp className="h-3 w-3 text-accent-green" />
+    ) : (
+      <ArrowDown className="h-3 w-3 text-accent-green" />
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -195,8 +313,8 @@ export default function FinancePage() {
                     <div><span className="text-muted-foreground">Contract: </span><span className="font-mono text-xs">{selectedTxn.contract_id}</span></div>
                     <div><span className="text-muted-foreground">Order ID: </span><span className="font-mono text-xs">{selectedTxn.order_id ?? "—"}</span></div>
                     <div><span className="text-muted-foreground">Currency: </span>{selectedTxn.currency}</div>
-                    <div><span className="text-muted-foreground">Payer: </span>{userName(selectedTxn.payer_id)}</div>
-                    <div><span className="text-muted-foreground">Payee: </span>{userName(selectedTxn.payee_id)}</div>
+                    <div><span className="text-muted-foreground">Payer: </span>{selectedTxn.payer_name || userName(selectedTxn.payer_id)}</div>
+                    <div><span className="text-muted-foreground">Payee: </span>{selectedTxn.payee_name || userName(selectedTxn.payee_id)}</div>
                     <div><span className="text-muted-foreground">Amount: </span><span className="font-semibold">{fmt(selectedTxn.amount_cents)}</span></div>
                     <div><span className="text-muted-foreground">Platform Fee: </span>{fmt(selectedTxn.platform_fee_cents)}</div>
                     <div><span className="text-muted-foreground">Donation: </span>{fmt(selectedTxn.donation_cents)}</div>
@@ -216,126 +334,192 @@ export default function FinancePage() {
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Contract ID: </span><span className="font-mono text-xs">{selectedBooking.id}</span></div>
                     <div><span className="text-muted-foreground">Booking ID: </span><span className="font-mono text-xs">{selectedBooking.booking_id}</span></div>
+                    <div><span className="text-muted-foreground">Rider (Payer): </span><span className="font-medium">{selectedBooking.rider_name || (selectedBooking.rider_id ? userName(selectedBooking.rider_id) : userName(selectedBooking.parties[1] ?? selectedBooking.parties[0]))}</span></div>
+                    <div><span className="text-muted-foreground">Driver (Payee): </span><span className="font-medium">{selectedBooking.driver_name || (selectedBooking.driver_id ? userName(selectedBooking.driver_id) : userName(selectedBooking.parties[0]))}</span></div>
                     <div><span className="text-muted-foreground">Origin: </span>{selectedBooking.origin_address ?? "—"}</div>
                     <div><span className="text-muted-foreground">Destination: </span>{selectedBooking.dest_address ?? "—"}</div>
                     <div><span className="text-muted-foreground">Agreed Price: </span><span className="font-semibold">{fmt(selectedBooking.agreed_price_cents)}</span></div>
                     <div><span className="text-muted-foreground">Status: </span><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(selectedBooking.status)}`}>{selectedBooking.status}</span></div>
-                    <div><span className="text-muted-foreground">Parties: </span>{selectedBooking.parties.map((p) => userName(p)).join(", ")}</div>
                     <div><span className="text-muted-foreground">Completed: </span>{selectedBooking.completed_at ? new Date(selectedBooking.completed_at).toLocaleString() : "—"}</div>
                   </div>
                 </div>
               )}
 
-              {/* Completed Bookings table */}
-              {completedBookings.length > 0 && (
-                <>
-                  <h3 className="text-sm font-medium text-muted-foreground">Completed Bookings</h3>
-                  <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/40">
-                        <th className="px-3 py-2 text-left font-medium">Parties</th>
-                        <th className="px-3 py-2 text-left font-medium">Route</th>
-                        <th className="px-3 py-2 text-right font-medium">Price</th>
-                        <th className="px-3 py-2 text-left font-medium">Status</th>
-                        <th className="px-3 py-2 text-left font-medium">Completed</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {completedBookings.map((b) => (
+              {/* Unified Payment Transactions table */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-sm font-medium text-muted-foreground">Payment Transactions</h3>
+                <div className="flex items-center gap-1 rounded-lg border p-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setTxTypeFilter("all")}
+                    className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                      txTypeFilter === "all"
+                        ? "bg-accent-green text-white"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    All ({allUnifiedTxs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTxTypeFilter("cash")}
+                    className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                      txTypeFilter === "cash"
+                        ? "bg-accent-green text-white"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Cash ({completedBookings.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTxTypeFilter("ekyash")}
+                    className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                      txTypeFilter === "ekyash"
+                        ? "bg-accent-green text-white"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    E-Kyash ({txns.length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="px-3 py-2 text-left font-medium">Payer (Rider)</th>
+                      <th className="px-3 py-2 text-left font-medium">Payee (Driver)</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("type")}
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                        >
+                          Type {renderSortIcon("type")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("amount")}
+                          className="inline-flex items-center justify-end gap-1 hover:text-foreground w-full"
+                        >
+                          Amount {renderSortIcon("amount")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">Fee</th>
+                      <th className="px-3 py-2 text-right font-medium">Donation</th>
+                      <th className="px-3 py-2 text-left font-medium">Status</th>
+                      <th className="px-3 py-2 text-left font-medium">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("date")}
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                        >
+                          Date {renderSortIcon("date")}
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedTxs.map((t) => {
+                      const isSelected =
+                        (selectedTxn && selectedTxn.id === t.id) ||
+                        (selectedBooking && selectedBooking.id === t.id);
+
+                      return (
                         <tr
-                          key={b.id}
-                          onClick={() => setSelectedBooking(selectedBooking?.id === b.id ? null : b)}
-                          className={`cursor-pointer border-b transition-colors hover:bg-muted/30 ${selectedBooking?.id === b.id ? "bg-muted/40" : ""}`}
+                          key={`${t.type}-${t.id}`}
+                          onClick={() => {
+                            if (t.rawTxn) {
+                              setSelectedTxn(selectedTxn?.id === t.rawTxn.id ? null : t.rawTxn);
+                              setSelectedBooking(null);
+                            } else if (t.rawBooking) {
+                              setSelectedBooking(
+                                selectedBooking?.id === t.rawBooking.id ? null : t.rawBooking
+                              );
+                              setSelectedTxn(null);
+                            }
+                          }}
+                          className={`cursor-pointer border-b transition-colors hover:bg-muted/30 ${
+                            isSelected ? "bg-muted/40" : ""
+                          }`}
                         >
                           <td className="px-3 py-2">
-                            {b.parties.map((p) => userName(p)).join(" & ")}
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <span>{t.payer_name || (t.payer_id ? userName(t.payer_id) : "—")}</span>
+                              {t.type === "cash" && (
+                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                                  Rider
+                                </span>
+                              )}
+                            </div>
+                            {t.route_label && (
+                              <div
+                                className="max-w-[220px] truncate text-[11px] text-muted-foreground"
+                                title={t.route_label}
+                              >
+                                {t.route_label}
+                              </div>
+                            )}
                           </td>
-                          <td className="px-3 py-2 max-w-[200px] truncate text-muted-foreground">
-                            {b.origin_address && b.dest_address
-                              ? `${b.origin_address} → ${b.dest_address}`
-                              : b.origin_address ?? b.dest_address ?? "—"}
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <span>{t.payee_name || (t.payee_id ? userName(t.payee_id) : "—")}</span>
+                              {t.type === "cash" && (
+                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                                  Driver
+                                </span>
+                              )}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 text-right font-mono">
-                            {fmt(b.agreed_price_cents)}
+                          <td className="px-3 py-2">
+                            {t.type === "cash" ? (
+                              <span className="inline-flex items-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                                Cash
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
+                                E-Kyash
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-medium">
+                            {fmt(t.amount_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-muted-foreground">
+                            {t.platform_fee_cents > 0 ? fmt(t.platform_fee_cents) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-muted-foreground">
+                            {t.donation_cents > 0 ? fmt(t.donation_cents) : "—"}
                           </td>
                           <td className="px-3 py-2">
                             <span
-                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(b.status)}`}
+                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(
+                                t.status
+                              )}`}
                             >
-                              {b.status}
+                              {t.status}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
-                            {b.completed_at ? new Date(b.completed_at).toLocaleDateString() : "—"}
+                            {new Date(t.created_at).toLocaleDateString()}
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  </div>
-                </>
-              )}
-
-              {/* eKyash Transactions table */}
-              <h3 className="text-sm font-medium text-muted-foreground">Payment Transactions</h3>
-              <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40">
-                    <th className="px-3 py-2 text-left font-medium">Payer</th>
-                    <th className="px-3 py-2 text-left font-medium">Payee</th>
-                    <th className="px-3 py-2 text-right font-medium">Amount</th>
-                    <th className="px-3 py-2 text-right font-medium">Fee</th>
-                    <th className="px-3 py-2 text-right font-medium">Donation</th>
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {txns.map((t) => (
-                    <tr
-                      key={t.id}
-                      onClick={() => setSelectedTxn(selectedTxn?.id === t.id ? null : t)}
-                      className={`cursor-pointer border-b transition-colors hover:bg-muted/30 ${selectedTxn?.id === t.id ? "bg-muted/40" : ""}`}
-                    >
-                      <td className="px-3 py-2">
-                        {userName(t.payer_id)}
-                      </td>
-                      <td className="px-3 py-2">
-                        {userName(t.payee_id)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono">
-                        {fmt(t.amount_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                        {fmt(t.platform_fee_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                        {fmt(t.donation_cents)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(t.status)}`}
-                        >
-                          {t.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {new Date(t.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                  {txns.length === 0 && completedBookings.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
-                        No transactions found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                      );
+                    })}
+                    {filteredAndSortedTxs.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                          No transactions found for the selected filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
