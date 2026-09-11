@@ -810,7 +810,7 @@ async function handleContentList({ service }: AdminContext) {
     service
       .from("posts")
       .select(
-        "id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_filled, created_at"
+        "id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_filled, is_round_trip, return_time, repeat_days, repeat_until, expires_at, pickup_notes, vehicle_description, route_distance_km, route_duration_min, created_at"
       )
       .order("created_at", { ascending: false })
       .limit(200),
