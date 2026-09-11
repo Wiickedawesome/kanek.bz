@@ -645,7 +645,7 @@ export default function BookingsPage() {
                     </td>
                     <td className="px-3 py-3 text-right">
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-accent-blue hover:underline">
-                        Audit <ArrowRight className="h-3.5 w-3.5" />
+                        Details <ArrowRight className="h-3.5 w-3.5" />
                       </span>
                     </td>
                   </tr>
@@ -683,7 +683,7 @@ export default function BookingsPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-foreground">
-                      Ride Audit Record
+                      Ride Details
                     </h3>
                     {getStatusBadge(selectedItem.status)}
                   </div>
@@ -698,7 +698,7 @@ export default function BookingsPage() {
               <button
                 onClick={() => setSelectedItem(null)}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Close audit panel"
+                aria-label="Close"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -924,7 +924,7 @@ export default function BookingsPage() {
 
                 <div className="rounded-lg border bg-card p-4 space-y-2">
                   <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Financial & Payment Audit
+                    Financial & Payment Details
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
@@ -1078,7 +1078,7 @@ export default function BookingsPage() {
                 onClick={() => setSelectedItem(null)}
                 className="rounded-md border bg-background hover:bg-muted px-4 py-1.5 text-xs font-medium text-foreground transition-colors"
               >
-                Close Audit
+                Close
               </button>
             </div>
           </div>
