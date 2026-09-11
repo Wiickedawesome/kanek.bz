@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   getAdminActionErrorMessage,
@@ -13,21 +13,22 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoadError(null);
-      try {
-        setStats(await getAdminDashboardStats());
-      } catch (error) {
-        setLoadError(getAdminActionErrorMessage(error));
-        setStats(null);
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setStats(await getAdminDashboardStats());
+    } catch (error) {
+      setLoadError(getAdminActionErrorMessage(error));
+      setStats(null);
+    } finally {
+      setLoading(false);
     }
-
-    void load();
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -42,7 +43,26 @@ export default function AdminDashboard() {
     );
   }
 
-  if (!stats) return <p className="text-muted-foreground">Failed to load stats.</p>;
+  if (!stats) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Overview</h2>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+          <p className="font-medium">Failed to load dashboard statistics</p>
+          <p className="mt-1 text-xs opacity-90">
+            {loadError ?? "An error occurred while fetching overview stats."}
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-3 inline-flex items-center justify-center rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const cards: { label: string; value: number; href?: string }[] = [
     { label: "Total Users", value: stats.totalUsers, href: "/admin/users" },
