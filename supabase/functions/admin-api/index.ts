@@ -2224,6 +2224,12 @@ async function handleReviewDriverDocument(
 
   if (doc?.document_type === "taxi_association_card") {
     const isApproved = status === "approved";
+    const { data: driverRow } = await service
+      .from("driver_details")
+      .select("taxi_association_name")
+      .eq("id", profileId)
+      .maybeSingle();
+
     await Promise.all([
       service
         .from("driver_details")
@@ -2237,6 +2243,7 @@ async function handleReviewDriverDocument(
         .from("profiles")
         .update({
           taxi_association_verified: isApproved,
+          ...(driverRow?.taxi_association_name ? { taxi_association_name: driverRow.taxi_association_name } : {}),
         })
         .eq("id", profileId),
     ]);
