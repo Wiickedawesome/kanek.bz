@@ -23,6 +23,8 @@ import {
 import {
   getAdminActionErrorMessage,
   getAdminBookingsData,
+  getAdminContentData,
+  getAdminUsersData,
   type BookingAuditItem,
 } from "@/lib/admin-backend";
 
@@ -53,14 +55,78 @@ type RawContract = {
   created_at: string;
 };
 
+type Profile = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  role: string;
+  rating_avg: number | null;
+  punctuality_pct: number | null;
+  emergency_contact: string | null;
+  account_status: string | null;
+};
+
+type DriverDetail = {
+  id: string;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_year: number | null;
+  vehicle_color: string | null;
+  vehicle_plate: string | null;
+  verified: boolean;
+};
+
+type Post = {
+  id: string;
+  author_id: string;
+  type: string;
+  status: string;
+  title: string | null;
+  description: string | null;
+  origin_address: string | null;
+  dest_address: string | null;
+  price_cents: number | null;
+  seats_total: number | null;
+  seats_remaining: number | null;
+  departure_at: string | null;
+  created_at: string;
+};
+
+function getPersonDisplayName(
+  profile?: Profile | null,
+  fallbackId?: string | null,
+  role?: string
+): string {
+  if (profile) {
+    const full = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim();
+    if (full) return full;
+    if (profile.email) return profile.email.split("@")[0];
+    if (profile.phone) return profile.phone;
+  }
+  if (fallbackId) {
+    return `${role ?? "User"} (${fallbackId.slice(0, 8)})`;
+  }
+  return "Unassigned";
+}
+
 function synthesizeAuditItemsFromRaw(
   bookings: RawBooking[],
   contracts: RawContract[],
-  apiAuditItems: BookingAuditItem[] = []
+  apiAuditItems: BookingAuditItem[] = [],
+  profiles: Profile[] = [],
+  driverDetails: DriverDetail[] = [],
+  posts: Post[] = []
 ): BookingAuditItem[] {
   if (apiAuditItems.length > 0) {
     return apiAuditItems;
   }
+
+  const profilesMap = new Map(profiles.map((p) => [p.id, p]));
+  const driversMap = new Map(driverDetails.map((d) => [d.id, d]));
+  const postsMap = new Map(posts.map((p) => [p.id, p]));
 
   // Graceful fallback for existing mock/test data or while backend deployment is pending
   return bookings.map((b) => {
@@ -68,16 +134,39 @@ function synthesizeAuditItemsFromRaw(
       contracts.find((c) => c.booking_id === b.id) ||
       contracts.find((c) => c.post_id === b.post_id);
 
+    const post = postsMap.get(b.post_id);
+
     const isDriver = b.role === "driver";
     const isRider = b.role === "rider";
 
-    const driverId = isDriver
-      ? b.user_id
-      : contract?.parties?.find((p) => p !== b.user_id) || null;
+    let driverId: string | null = null;
+    let riderId: string | null = null;
 
-    const riderId = isRider
-      ? b.user_id
-      : contract?.parties?.find((p) => p !== b.user_id) || null;
+    if (isDriver) {
+      driverId = b.user_id;
+      riderId = post?.author_id ?? contract?.parties?.find((p) => p !== b.user_id) ?? null;
+    } else if (isRider) {
+      riderId = b.user_id;
+      driverId = post?.author_id ?? contract?.parties?.find((p) => p !== b.user_id) ?? null;
+    } else {
+      driverId = post?.type === "route_offer" ? post.author_id : b.user_id;
+      riderId = post?.type === "route_offer" ? b.user_id : post?.author_id ?? null;
+    }
+
+    const driverProfile = driverId ? profilesMap.get(driverId) : null;
+    const riderProfile = riderId ? profilesMap.get(riderId) : null;
+    const driverDetail = driverId ? driversMap.get(driverId) : null;
+
+    const driverName = getPersonDisplayName(driverProfile, driverId, "Driver");
+    const riderName = getPersonDisplayName(riderProfile, riderId, "Rider");
+
+    const origin = contract?.origin_address ?? post?.origin_address ?? null;
+    const dest = contract?.dest_address ?? post?.dest_address ?? null;
+    const departure = contract?.departure_at ?? post?.departure_at ?? null;
+
+    const agreedPrice =
+      contract?.agreed_price_cents ??
+      (post?.price_cents ? post.price_cents * (b.seats_booked ?? 1) : null);
 
     return {
       id: b.id,
@@ -88,41 +177,49 @@ function synthesizeAuditItemsFromRaw(
       bookingStatus: b.status,
       contractStatus: contract?.status ?? null,
       createdAt: b.created_at,
-      departureAt: contract?.departure_at ?? null,
+      departureAt: departure,
       completedAt: contract?.completed_at ?? null,
       cancelledAt: b.cancelled_at ?? null,
       cancelReason: b.cancel_reason ?? null,
       seatsBooked: b.seats_booked ?? 1,
       paymentMethod: b.payment_method ?? null,
-      agreedPriceCents: contract?.agreed_price_cents ?? null,
-      originAddress: contract?.origin_address ?? null,
-      destAddress: contract?.dest_address ?? null,
-      postTitle: null,
-      postType: null,
+      agreedPriceCents: agreedPrice,
+      originAddress: origin,
+      destAddress: dest,
+      postTitle: post?.title ?? null,
+      postType: post?.type ?? null,
       driver: driverId
         ? {
             id: driverId,
-            name: `Driver (${driverId.slice(0, 8)})`,
-            email: null,
-            phone: null,
-            avatarUrl: null,
-            ratingAvg: null,
-            punctualityPct: null,
-            accountStatus: null,
-            vehicle: null,
+            name: driverName,
+            email: driverProfile?.email ?? null,
+            phone: driverProfile?.phone ?? null,
+            avatarUrl: driverProfile?.avatar_url ?? null,
+            ratingAvg: driverProfile?.rating_avg ?? null,
+            punctualityPct: driverProfile?.punctuality_pct ?? null,
+            accountStatus: driverProfile?.account_status ?? null,
+            vehicle: driverDetail
+              ? {
+                  make: driverDetail.vehicle_make,
+                  model: driverDetail.vehicle_model,
+                  year: driverDetail.vehicle_year,
+                  color: driverDetail.vehicle_color,
+                  plate: driverDetail.vehicle_plate,
+                  verified: driverDetail.verified,
+                }
+              : null,
           }
         : null,
       rider: riderId
         ? {
             id: riderId,
-            name: `Rider (${riderId.slice(0, 8)})`,
-            email: null,
-            phone: null,
-            avatarUrl: null,
-            ratingAvg: null,
-            punctualityPct: null,
-            emergencyContact: null,
-            accountStatus: null,
+            name: riderName,
+            email: riderProfile?.email ?? null,
+            phone: riderProfile?.phone ?? null,
+            avatarUrl: riderProfile?.avatar_url ?? null,
+            ratingAvg: riderProfile?.rating_avg ?? null,
+            emergencyContact: riderProfile?.emergency_contact ?? null,
+            accountStatus: riderProfile?.account_status ?? null,
           }
         : null,
       timeline: [
@@ -132,7 +229,7 @@ function synthesizeAuditItemsFromRaw(
           label: "Booking Created",
           timestamp: b.created_at,
           actorId: b.user_id,
-          actorName: `${isDriver ? "Driver" : "Rider"} (${b.user_id.slice(0, 8)})`,
+          actorName: isDriver ? driverName : riderName,
           actorRole: (isDriver ? "driver" : isRider ? "rider" : "system") as "driver" | "rider" | "system" | "admin",
           note: `${b.seats_booked ?? 1} seat(s) booked (${b.status})`,
         },
@@ -146,9 +243,7 @@ function synthesizeAuditItemsFromRaw(
                 actorId: null,
                 actorName: null,
                 actorRole: "system" as const,
-                note: contract.agreed_price_cents
-                  ? `Agreed fare: $${(contract.agreed_price_cents / 100).toFixed(2)} BZD`
-                  : null,
+                note: agreedPrice ? `Agreed fare: $${(agreedPrice / 100).toFixed(2)} BZD` : null,
               },
             ]
           : []),
@@ -160,7 +255,7 @@ function synthesizeAuditItemsFromRaw(
                 label: "Trip Completed",
                 timestamp: contract?.completed_at || b.created_at,
                 actorId: driverId,
-                actorName: driverId ? `Driver (${driverId.slice(0, 8)})` : null,
+                actorName: driverName,
                 actorRole: "driver" as const,
                 note: null,
               },
@@ -199,11 +294,19 @@ export default function BookingsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getAdminBookingsData<RawBooking, RawContract>();
+      const [bookingsData, usersData, contentData] = await Promise.all([
+        getAdminBookingsData<RawBooking, RawContract>(),
+        getAdminUsersData<Profile, DriverDetail, unknown, unknown>().catch(() => null),
+        getAdminContentData<Post, unknown>().catch(() => null),
+      ]);
+
       const items = synthesizeAuditItemsFromRaw(
-        data.bookings ?? [],
-        data.contracts ?? [],
-        data.auditItems ?? []
+        bookingsData.bookings ?? [],
+        bookingsData.contracts ?? [],
+        bookingsData.auditItems ?? [],
+        usersData?.profiles ?? [],
+        usersData?.driverDetails ?? [],
+        contentData?.posts ?? []
       );
       setAuditItems(items);
     } catch (error) {
@@ -470,6 +573,9 @@ export default function BookingsPage() {
                       {item.driver ? (
                         <div>
                           <div className="font-medium text-foreground">{item.driver.name}</div>
+                          <div className="font-mono text-[11px] text-muted-foreground">
+                            ID: {item.driver.id.slice(0, 8)}
+                          </div>
                           {item.driver.phone && (
                             <div className="text-xs text-muted-foreground">{item.driver.phone}</div>
                           )}
@@ -487,6 +593,9 @@ export default function BookingsPage() {
                       {item.rider ? (
                         <div>
                           <div className="font-medium text-foreground">{item.rider.name}</div>
+                          <div className="font-mono text-[11px] text-muted-foreground">
+                            ID: {item.rider.id.slice(0, 8)}
+                          </div>
                           {item.rider.phone && (
                             <div className="text-xs text-muted-foreground">{item.rider.phone}</div>
                           )}
@@ -647,16 +756,14 @@ export default function BookingsPage() {
                         <div className="text-sm font-semibold text-foreground">
                           {selectedItem.driver.name}
                         </div>
+                        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
+                          User ID: <span className="text-foreground select-all">{selectedItem.driver.id}</span>
+                        </div>
                         {selectedItem.driver.email && (
                           <div className="text-muted-foreground">{selectedItem.driver.email}</div>
                         )}
                         {selectedItem.driver.phone && (
                           <div className="text-muted-foreground">{selectedItem.driver.phone}</div>
-                        )}
-                        {!selectedItem.driver.email && !selectedItem.driver.phone && (
-                          <div className="text-muted-foreground font-mono text-[11px]">
-                            ID: {selectedItem.driver.id}
-                          </div>
                         )}
                       </div>
 
@@ -735,16 +842,14 @@ export default function BookingsPage() {
                         <div className="text-sm font-semibold text-foreground">
                           {selectedItem.rider.name}
                         </div>
+                        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
+                          User ID: <span className="text-foreground select-all">{selectedItem.rider.id}</span>
+                        </div>
                         {selectedItem.rider.email && (
                           <div className="text-muted-foreground">{selectedItem.rider.email}</div>
                         )}
                         {selectedItem.rider.phone && (
                           <div className="text-muted-foreground">{selectedItem.rider.phone}</div>
-                        )}
-                        {!selectedItem.rider.email && !selectedItem.rider.phone && (
-                          <div className="text-muted-foreground font-mono text-[11px]">
-                            ID: {selectedItem.rider.id}
-                          </div>
                         )}
                       </div>
 

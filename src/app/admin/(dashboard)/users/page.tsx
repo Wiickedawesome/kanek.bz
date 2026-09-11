@@ -9,6 +9,8 @@ import {
   ArrowRight,
   Search,
   Loader2,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   declineAdminAccount,
@@ -166,6 +168,7 @@ function UsersPageInner() {
   const [detailRiderDocs, setDetailRiderDocs] = useState<RiderDocument[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   /* ── List data loader ── */
   const load = useCallback(async () => {
@@ -526,6 +529,25 @@ function UsersPageInner() {
               <div>
                 <h2 className="text-xl font-semibold">{fullName}</h2>
                 <p className="text-sm text-muted-foreground">{detailProfile.email}</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-xs font-mono bg-muted/60 text-muted-foreground px-2 py-0.5 rounded border inline-flex items-center gap-1.5">
+                    <span className="text-muted-foreground">User ID:</span>
+                    <span className="text-foreground font-semibold select-all">{detailProfile.id}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(detailProfile.id);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 2000);
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded hover:bg-muted border border-border/60"
+                    title="Copy User ID to clipboard"
+                  >
+                    {copiedId ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                    <span className="text-[11px]">{copiedId ? "Copied" : "Copy ID"}</span>
+                  </button>
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -535,6 +557,7 @@ function UsersPageInner() {
           </div>
 
           <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <InfoField label="User ID (UUID)" value={detailProfile.id} />
             <InfoField label="Email" value={detailProfile.email ?? "—"} />
             <InfoField label="Phone" value={detailProfile.phone ?? "—"} />
             <InfoField label="Role" value={detailProfile.role} />
@@ -1265,6 +1288,7 @@ function UsersPageInner() {
                           {(p.first_name || p.last_name) && (p.email || p.phone) ? (
                             <div className="text-xs text-muted-foreground">{p.email ?? p.phone}</div>
                           ) : null}
+                          <div className="font-mono text-[11px] text-muted-foreground">ID: {p.id.slice(0, 8)}</div>
                         </td>
                         <td className="px-3 py-2">
                           <StatusBadge value={p.role} />
@@ -1325,6 +1349,7 @@ function UsersPageInner() {
                             {(p.first_name || p.last_name) && (p.email || p.phone) ? (
                               <div className="text-xs text-muted-foreground">{p.email ?? p.phone}</div>
                             ) : null}
+                            <div className="font-mono text-[11px] text-muted-foreground">ID: {p.id.slice(0, 8)}</div>
                           </td>
                           <td className="px-3 py-2">
                             <div>{vehicleText}</div>
