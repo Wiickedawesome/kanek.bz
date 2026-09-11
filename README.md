@@ -132,9 +132,13 @@ POST /lookup/names
 POST /moderation/list
 POST /moderation/review-flag
 POST /moderation/issue-strike
+POST /strikes/report
 POST /users/list
 POST /users/detail
 POST /users/account-status
+POST /users/decline-account
+POST /users/send-reminder
+POST /users/process-onboarding-reminders
 POST /users/review-driver
 POST /users/review-driver-document
 POST /users/review-rider-document

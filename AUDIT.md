@@ -61,8 +61,8 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    GitHub Pages                      │
-│              (static HTML/CSS/JS export)             │
+│                  Firebase Hosting                   │
+│         (static HTML/CSS/JS export from out/)        │
 ├──────────────────────┬──────────────────────────────┤
 │   Public Site (7pp)  │   Admin Dashboard (7 sections)│
 │   /                  │   /admin/login                │
@@ -537,23 +537,24 @@ AdminGuard component → blocks non-admin from dashboard routes
 | No broken asset references | JS/CSS chunks load correctly | Open HTML files locally |
 | No server-only features used | No `getServerSideProps`, no API routes, no dynamic routes | Code scan |
 
-### 5.4 GitHub Pages SPA Routing — LAUNCH BLOCKER
+### 5.4 Firebase Hosting SPA Routing & Rewrites
 
-**The problem**: `output: "export"` produces static HTML files. GitHub Pages serves them directly. When a user navigates to `/admin/bookings` via the browser's address bar (not via client-side navigation), GitHub Pages looks for `out/admin/bookings/index.html`. If it doesn't exist as a pre-rendered page, it returns 404.
+**Configuration**: `output: "export"` produces static HTML files served via Firebase Hosting (`firebase.json`). Firebase Hosting handles static assets and clean URLs, serving pre-rendered HTML files.
 
-**What we need to verify:**
-- Does Next.js static export create `admin/bookings/index.html`? (It should, since these are pages)
-- Does client-side routing work after initial load? (It should, via Next.js router)
-- Is there a custom `404.html` fallback that redirects to the SPA? (May be needed for catch-all routes)
+**Verified setup**:
+- `firebase.json` specifies `"public": "out"` and `"cleanUrls": true`.
+- Next.js static export generates `admin/bookings.html` and other routes.
+- Client-side navigation runs via Next.js App Router.
 
 ### 5.5 Domain & HTTPS
 
 | Check | Expected |
 |-------|----------|
-| CNAME configured | `kanek.bz` points to GitHub Pages |
-| HTTPS enforced | GitHub Pages settings → "Enforce HTTPS" checked |
-| www redirect | `www.kanek.bz` → `kanek.bz` (or vice versa) |
-| Admin accessible | `kanek.bz/admin/login` loads correctly |
+| Hosting Target | `kanek-bz` configured in `.firebaserc` |
+| Apex Domain | `kanek.bz` points to Firebase Hosting (A record: `199.36.158.100`) |
+| WWW Subdomain | `www.kanek.bz` points to `kanek-bz.web.app` |
+| HTTPS enforced | Automatic SSL via Google Cloud / Firebase Hosting |
+| Admin accessible | `https://kanek.bz/admin/login` loads correctly |
 
 ---
 
@@ -673,7 +674,7 @@ grep -rn "dangerouslySetInnerHTML" src/
 | # | Risk | Impact | Mitigation |
 |---|------|--------|------------|
 | 1 | **Supabase RLS not configured** | All 17 tables publicly readable/writable via anon key | Verify every policy in Supabase dashboard |
-| 2 | **GitHub Pages SPA deep linking** | Direct URL to `/admin/bookings` may 404 | Verify static export creates all HTML files, add 404.html fallback if needed |
+| 2 | ~~GitHub Pages SPA deep linking~~ | Direct URL to `/admin/bookings` may 404 | ✅ Hosted on Firebase Hosting with cleanUrls enabled |
 | 3 | **Client-side admin check only** | `isAdmin` check is cosmetic if RLS is missing | RLS must enforce role at database level |
 
 ### High
@@ -714,8 +715,8 @@ grep -rn "dangerouslySetInnerHTML" src/
 | Exclusion | Reason | How to Address Separately |
 |-----------|--------|---------------------------|
 | Supabase server-side config | Cannot access from code alone | Audit via Supabase dashboard |
-| DNS configuration | Infrastructure level | Check registrar + GitHub Pages settings |
-| SSL certificates | Managed by GitHub Pages | Verify "Enforce HTTPS" in repo settings |
+| DNS configuration | Infrastructure level | Check registrar + Firebase Hosting custom domain |
+| SSL certificates | Managed by Firebase Hosting | Automatic SSL provisioning by Google Cloud |
 | Email deliverability | Supabase manages OTP emails | Test OTP flow manually, check spam |
 | Legal review of Privacy/Terms | Requires legal expertise | Have a lawyer review before launch |
 | Load testing | Requires production environment | Run after deployment |
