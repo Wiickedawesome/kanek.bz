@@ -25,6 +25,11 @@ import {
   Copy,
   Check,
   Bell,
+  Briefcase,
+  ShoppingBag,
+  Package,
+  Navigation,
+  DollarSign,
 } from "lucide-react";
 
 type Post = {
@@ -49,6 +54,16 @@ type Post = {
   vehicle_description?: string | null;
   route_distance_km?: number | null;
   route_duration_min?: number | null;
+  job_category?: string | null;
+  job_timeline?: string | null;
+  pay_rate_cents?: number | null;
+  pay_type?: string | null;
+  errand_category?: string | null;
+  errand_fee_cents?: number | null;
+  item_cost_cents?: number | null;
+  pickup_style?: string | null;
+  min_riders?: number | null;
+  payment_method?: string | null;
   created_at: string;
 };
 
@@ -86,6 +101,41 @@ type DriverDetail = {
   verified: boolean;
 };
 
+const JOB_CATEGORY_LABELS: Record<string, string> = {
+  skilled_trade: "Skilled Trade",
+  cleaning: "Cleaning",
+  delivery: "Delivery",
+  childcare: "Childcare",
+  agriculture: "Agriculture",
+  construction: "Construction",
+  hospitality: "Hospitality",
+  admin: "Admin",
+  handyman: "Handyman",
+  landscaping: "Landscaping",
+  moving: "Moving",
+  tutoring: "Tutoring",
+  tech: "Tech",
+  other: "Other",
+};
+
+const JOB_TIMELINE_LABELS: Record<string, string> = {
+  asap: "ASAP",
+  today: "Today",
+  this_week: "This Week",
+  flexible: "Flexible",
+};
+
+const ERRAND_CATEGORY_LABELS: Record<string, string> = {
+  grocery: "Grocery",
+  bill: "Bill Payment",
+  pharmacy: "Pharmacy",
+  document: "Document Delivery",
+  delivery: "Delivery",
+  food: "Food & Dining",
+  hardware: "Hardware",
+  other: "Other",
+};
+
 function getAuthorDisplayName(
   profile?: Profile | null,
   fallbackId?: string | null
@@ -110,6 +160,55 @@ function formatRepeatDays(days?: number[] | null): string {
   if (isWeekdays) return "Weekdays (Mon – Fri)";
   if (days.length === 7) return "Daily";
   return days.map((d) => dayNames[d % 7] ?? `Day ${d}`).join(", ");
+}
+
+function PostTypeBadge({ type }: { type: string }) {
+  const norm = type.toLowerCase();
+  if (norm === "route_offer") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+        <Car className="h-3 w-3 shrink-0" />
+        <span>Route Offer</span>
+      </span>
+    );
+  }
+  if (norm === "route_request" || norm === "ride_request") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-400 border border-blue-500/20">
+        <Navigation className="h-3 w-3 shrink-0" />
+        <span>Ride Request</span>
+      </span>
+    );
+  }
+  if (norm === "job") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300 border border-amber-500/20">
+        <Briefcase className="h-3 w-3 shrink-0" />
+        <span>Job</span>
+      </span>
+    );
+  }
+  if (norm === "errand") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-semibold text-orange-800 dark:text-orange-300 border border-orange-500/20">
+        <ShoppingBag className="h-3 w-3 shrink-0" />
+        <span>Errand</span>
+      </span>
+    );
+  }
+  if (norm === "package") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:text-purple-300 border border-purple-500/20">
+        <Package className="h-3 w-3 shrink-0" />
+        <span>Package</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize">
+      {type.replace(/_/g, " ")}
+    </span>
+  );
 }
 
 export default function ContentPage() {
@@ -138,8 +237,8 @@ export default function ContentPage() {
 
 function ContentPageInner() {
   const searchParams = useSearchParams();
-  const urlQuery = searchParams.get("q") ?? searchParams.get("search") ?? "";
-  const urlPostId = searchParams.get("id") ?? "";
+  const urlPostId = searchParams.get("id");
+  const urlQuery = searchParams.get("q") ?? "";
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -224,18 +323,18 @@ function ContentPageInner() {
     }
   };
 
-  const formatCents = (cents: number | null) =>
-    cents !== null ? `$${(cents / 100).toFixed(2)} BZD` : "—";
+  const formatCents = (cents: number | null | undefined) => {
+    if (cents === null || cents === undefined) return "—";
+    return `$${(cents / 100).toFixed(2)} BZD`;
+  };
 
   const statusColor = (status: string) => {
     const map: Record<string, string> = {
-      open: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-      activated: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-      in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-      completed: "bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400",
-      cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-      expired: "bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400",
-      filled: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+      open: "bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20",
+      filled: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20",
+      completed: "bg-muted text-muted-foreground border border-border",
+      cancelled: "bg-destructive/10 text-destructive border border-destructive/20",
+      expired: "bg-destructive/10 text-destructive border border-destructive/20",
     };
     return map[status] ?? "bg-muted text-muted-foreground";
   };
@@ -255,11 +354,43 @@ function ContentPageInner() {
     return { total: posts.length, open, filled, completed, cancelled };
   }, [posts]);
 
+  /* ── Type Counts for Quick-Filters ── */
+  const typeCounts = useMemo(() => {
+    let routeOffer = 0;
+    let routeRequest = 0;
+    let job = 0;
+    let errand = 0;
+    let pkg = 0;
+    for (const p of posts) {
+      const norm = p.type.toLowerCase();
+      if (norm === "route_offer") routeOffer++;
+      else if (norm === "route_request" || norm === "ride_request") routeRequest++;
+      else if (norm === "job") job++;
+      else if (norm === "errand") errand++;
+      else if (norm === "package") pkg++;
+    }
+    return {
+      all: posts.length,
+      route_offer: routeOffer,
+      route_request: routeRequest,
+      job,
+      errand,
+      package: pkg,
+    };
+  }, [posts]);
+
   /* ── Search & Filters ── */
   const filteredPosts = useMemo(() => {
     return posts.filter((p) => {
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
-      if (typeFilter !== "all" && p.type !== typeFilter) return false;
+      if (typeFilter !== "all") {
+        const norm = p.type.toLowerCase();
+        if (typeFilter === "route_offer" && norm !== "route_offer") return false;
+        if (typeFilter === "route_request" && norm !== "route_request" && norm !== "ride_request") return false;
+        if (typeFilter === "job" && norm !== "job") return false;
+        if (typeFilter === "errand" && norm !== "errand") return false;
+        if (typeFilter === "package" && norm !== "package") return false;
+      }
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       const title = (p.title ?? "").toLowerCase();
@@ -269,13 +400,20 @@ function ContentPageInner() {
       const author = getAuthorDisplayName(profile, p.author_id).toLowerCase();
       const authorId = (p.author_id ?? "").toLowerCase();
       const id = (p.id ?? "").toLowerCase();
+      const pType = (p.type ?? "").toLowerCase();
+      const jobCat = (JOB_CATEGORY_LABELS[p.job_category ?? ""] ?? "").toLowerCase();
+      const errandCat = (ERRAND_CATEGORY_LABELS[p.errand_category ?? ""] ?? "").toLowerCase();
+
       return (
         title.includes(q) ||
         origin.includes(q) ||
         dest.includes(q) ||
         author.includes(q) ||
         authorId.includes(q) ||
-        id.includes(q)
+        id.includes(q) ||
+        pType.includes(q) ||
+        jobCat.includes(q) ||
+        errandCat.includes(q)
       );
     });
   }, [posts, statusFilter, typeFilter, searchQuery, profilesMap]);
@@ -356,7 +494,7 @@ function ContentPageInner() {
         </div>
       </div>
 
-      {/* Search & Filter Header */}
+      {/* Search & Filter Controls */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm font-semibold text-foreground">
           Marketplace Listings ({filteredPosts.length})
@@ -367,7 +505,7 @@ function ContentPageInner() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
-              placeholder="Search title, author, route, ID..."
+              placeholder="Search title, author, route, job, errand, ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-md border border-input bg-background pl-8 pr-7 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -383,28 +521,33 @@ function ContentPageInner() {
             )}
           </div>
 
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="all">All Types</option>
-            <option value="route_offer">Route Offers</option>
-            <option value="ride_request">Ride Requests</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="h-8 rounded-lg border border-border/80 bg-card px-3 text-xs font-semibold text-foreground shadow-xs transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">All Service Types ({typeCounts.all})</option>
+              <option value="route_offer">Route Offers ({typeCounts.route_offer})</option>
+              <option value="route_request">Ride Requests ({typeCounts.route_request})</option>
+              <option value="job">Jobs & Gigs ({typeCounts.job})</option>
+              <option value="errand">Errands & Tasks ({typeCounts.errand})</option>
+              <option value="package">Package Deliveries ({typeCounts.package})</option>
+            </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="all">All Statuses</option>
-            <option value="open">Open</option>
-            <option value="filled">Filled</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="expired">Expired</option>
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 rounded-lg border border-border/80 bg-card px-3 text-xs font-semibold text-foreground shadow-xs transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="filled">Filled</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -422,12 +565,12 @@ function ContentPageInner() {
               <tr className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="px-3 py-2.5 text-left font-semibold">Title & Post ID</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Author</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Type</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Service Type</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Status</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Route</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Fare</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Seats</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Schedule</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Route / Worksite</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Fare / Pay</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Specs / Details</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Schedule / Timeline</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Created</th>
               </tr>
             </thead>
@@ -437,6 +580,7 @@ function ContentPageInner() {
                 const authorProfile = profilesMap.get(p.author_id);
                 const authorName = getAuthorDisplayName(authorProfile, p.author_id);
                 const isRecurring = Boolean(p.repeat_days && p.repeat_days.length > 0);
+                const normType = p.type.toLowerCase();
 
                 return (
                   <tr
@@ -458,10 +602,8 @@ function ContentPageInner() {
                         ID: {p.author_id.slice(0, 8)}
                       </div>
                     </td>
-                    <td className="px-3 py-3">
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground font-medium">
-                        {p.type.replace(/_/g, " ")}
-                      </span>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <PostTypeBadge type={p.type} />
                     </td>
                     <td className="px-3 py-3">
                       <span
@@ -472,14 +614,23 @@ function ContentPageInner() {
                         {p.status.replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="px-3 py-3 max-w-[180px]">
-                      {p.origin_address || p.dest_address ? (
+
+                    {/* Route / Worksite Column */}
+                    <td className="px-3 py-3 max-w-[200px]">
+                      {normType === "job" ? (
+                        <div className="flex items-center gap-1 text-xs">
+                          <MapPin className="h-3 w-3 shrink-0 text-amber-600" />
+                          <span className="truncate font-medium text-foreground">
+                            {p.origin_address ?? "Location in details"}
+                          </span>
+                        </div>
+                      ) : p.origin_address || p.dest_address ? (
                         <>
-                          <div className="truncate font-medium text-foreground" title={p.origin_address ?? ""}>
+                          <div className="truncate font-medium text-foreground text-xs" title={p.origin_address ?? ""}>
                             {p.origin_address ?? "Origin"}
                           </div>
                           <div
-                            className="truncate text-xs text-muted-foreground flex items-center gap-1"
+                            className="truncate text-[11px] text-muted-foreground flex items-center gap-1"
                             title={p.dest_address ?? ""}
                           >
                             <ArrowDown className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -487,16 +638,96 @@ function ContentPageInner() {
                           </div>
                         </>
                       ) : (
-                        <span className="text-xs text-muted-foreground italic">No route specified</span>
+                        <span className="text-xs text-muted-foreground italic">No location set</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 tabular-nums font-semibold text-foreground">
-                      {formatCents(p.price_cents)}
-                    </td>
+
+                    {/* Fare / Pay Column */}
                     <td className="px-3 py-3 tabular-nums text-xs">
-                      <span className="font-medium text-foreground">{p.seats_filled ?? 0}</span>
-                      <span className="text-muted-foreground">/{p.seats_total ?? "—"}</span>
+                      {normType === "job" ? (
+                        <div>
+                          <span className="font-semibold text-foreground">
+                            {p.pay_rate_cents != null
+                              ? formatCents(p.pay_rate_cents)
+                              : formatCents(p.price_cents)}
+                          </span>
+                          <span className="text-muted-foreground ml-1">
+                            {p.pay_type === "hourly" ? "/hr" : "fixed"}
+                          </span>
+                        </div>
+                      ) : normType === "errand" ? (
+                        <div>
+                          <span className="font-semibold text-foreground">
+                            {formatCents(p.errand_fee_cents ?? p.price_cents)}
+                          </span>
+                          {p.item_cost_cents ? (
+                            <div className="text-[10px] text-muted-foreground">
+                              +~{formatCents(p.item_cost_cents)} items
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : normType === "package" ? (
+                        <span className="font-semibold text-foreground">
+                          {formatCents(p.price_cents ?? p.errand_fee_cents)}
+                        </span>
+                      ) : normType === "route_offer" ? (
+                        <div>
+                          <span className="font-semibold text-foreground">
+                            {formatCents(p.price_cents)}
+                          </span>
+                          <span className="text-muted-foreground text-[10px] ml-1">/seat</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-semibold text-foreground">
+                            {formatCents(p.price_cents)}
+                          </span>
+                          <span className="text-muted-foreground text-[10px] ml-1">offered</span>
+                        </div>
+                      )}
                     </td>
+
+                    {/* Specs / Details Column */}
+                    <td className="px-3 py-3 text-xs">
+                      {normType === "job" ? (
+                        <div>
+                          <span className="font-medium text-foreground">
+                            {JOB_CATEGORY_LABELS[p.job_category ?? ""] ??
+                              (p.job_category ? p.job_category.replace(/_/g, " ") : "Gig / Job")}
+                          </span>
+                          <div className="text-[10px] text-muted-foreground">
+                            {JOB_TIMELINE_LABELS[p.job_timeline ?? ""] ?? p.job_timeline ?? "Flexible"}
+                          </div>
+                        </div>
+                      ) : normType === "errand" ? (
+                        <div>
+                          <span className="font-medium text-foreground">
+                            {ERRAND_CATEGORY_LABELS[p.errand_category ?? ""] ??
+                              (p.errand_category ? p.errand_category.replace(/_/g, " ") : "Errand")}
+                          </span>
+                          <div className="text-[10px] text-muted-foreground">
+                            {p.pickup_style === "multi_stop" ? "Multi-stop" : "Single stop"}
+                          </div>
+                        </div>
+                      ) : normType === "package" ? (
+                        <div className="text-muted-foreground font-medium">Package Delivery</div>
+                      ) : normType === "route_offer" ? (
+                        <div className="tabular-nums">
+                          <span className="font-medium text-foreground">{p.seats_filled ?? 0}</span>
+                          <span className="text-muted-foreground">/{p.seats_total ?? "—"} seats</span>
+                        </div>
+                      ) : (
+                        <div className="tabular-nums">
+                          <span className="font-medium text-foreground">{p.seats_total ?? 1}</span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            seat{(p.seats_total ?? 1) > 1 ? "s" : ""} req.
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Schedule / Timeline Column */}
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {isRecurring && (
                         <div className="inline-flex items-center gap-1 font-medium text-accent-blue pb-0.5">
@@ -505,7 +736,16 @@ function ContentPageInner() {
                         </div>
                       )}
                       {p.departure_at ? (
-                        <div>{new Date(p.departure_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</div>
+                        <div>
+                          {new Date(p.departure_at).toLocaleString([], {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}
+                        </div>
+                      ) : normType === "job" && p.job_timeline ? (
+                        <span className="font-medium text-foreground">
+                          {JOB_TIMELINE_LABELS[p.job_timeline] ?? p.job_timeline}
+                        </span>
                       ) : (
                         <span className="italic">—</span>
                       )}
@@ -518,8 +758,8 @@ function ContentPageInner() {
               })}
               {filteredPosts.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
-                    {searchQuery ? "No listings match your search criteria." : "No listings found."}
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
+                    No marketplace listings match the selected filters.
                   </td>
                 </tr>
               )}
@@ -528,25 +768,25 @@ function ContentPageInner() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════
-          MODAL DETAIL VIEW — Matching Bookings Overlay Format
-          ════════════════════════════════════════════════════════ */}
+      {/* ── Detail Modal Overlay ── */}
       {selectedPost && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-xs"
-          onClick={() => setSelectedPost(null)}
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 sm:p-6"
         >
           <div
-            className="relative flex flex-col w-full max-w-4xl max-h-[92vh] rounded-xl border bg-card shadow-2xl overflow-hidden text-card-foreground"
+            className="flex flex-col w-full max-w-4xl max-h-[92vh] rounded-xl border bg-card shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b px-6 py-4 bg-muted/20">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-bold text-foreground">
                     {selectedPost.title}
                   </h3>
+                  <PostTypeBadge type={selectedPost.type} />
                   <span
                     className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusColor(
                       selectedPost.status
@@ -571,8 +811,8 @@ function ContentPageInner() {
                     <span>{copiedPostId ? "Copied" : "Copy"}</span>
                   </button>
                   <span className="text-border">&bull;</span>
-                  <span className="capitalize font-sans font-medium text-foreground">
-                    {selectedPost.type.replace(/_/g, " ")}
+                  <span className="text-muted-foreground font-sans">
+                    Posted on {new Date(selectedPost.created_at).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -612,7 +852,7 @@ function ContentPageInner() {
                       )}
                     </div>
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Author Profile & Information
+                      Author Profile & Contact Information
                     </span>
                   </div>
                   <Link
@@ -710,137 +950,395 @@ function ContentPageInner() {
                 </div>
               </div>
 
-              {/* Route & Pricing Summary Card */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border bg-card p-4 space-y-2">
+              {/* ── Dynamic Details: JOB SPECIFIC ── */}
+              {selectedPost.type.toLowerCase() === "job" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                      <Briefcase className="h-4 w-4 text-amber-600 shrink-0" />
+                      <div className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Job Overview & Worksite
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Worksite Location:</span>
+                        <div className="font-medium text-foreground mt-0.5 flex items-start gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <span>{selectedPost.origin_address ?? "Worksite location in description"}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between border-t pt-1.5">
+                        <span className="text-muted-foreground">Job Category:</span>
+                        <span className="font-semibold text-foreground">
+                          {JOB_CATEGORY_LABELS[selectedPost.job_category ?? ""] ??
+                            (selectedPost.job_category ? selectedPost.job_category.replace(/_/g, " ") : "General")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Desired Timeline:</span>
+                        <span className="font-semibold text-amber-700 dark:text-amber-400">
+                          {JOB_TIMELINE_LABELS[selectedPost.job_timeline ?? ""] ??
+                            selectedPost.job_timeline ??
+                            "Flexible"}
+                        </span>
+                      </div>
+                      {selectedPost.payment_method && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Payment Method:</span>
+                          <span className="font-medium uppercase text-foreground">
+                            {selectedPost.payment_method}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                      <DollarSign className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Compensation & Pay Terms
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-muted-foreground">Pay Rate:</span>
+                        <span className="text-base font-bold text-foreground">
+                          {selectedPost.pay_rate_cents != null
+                            ? formatCents(selectedPost.pay_rate_cents)
+                            : formatCents(selectedPost.price_cents)}
+                          <span className="text-xs font-normal text-muted-foreground ml-1">
+                            {selectedPost.pay_type === "hourly" ? "/ hour" : "fixed"}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Structure:</span>
+                        <span className="font-medium capitalize text-foreground">
+                          {selectedPost.pay_type === "hourly" ? "Hourly Rate" : "Fixed Project Fee"}
+                        </span>
+                      </div>
+                      <div className="pt-2 border-t">
+                        <Link
+                          href={`/admin/bookings?q=${selectedPost.id}`}
+                          className="text-xs text-accent-blue hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          View Contracts / Bookings for this Job <ArrowRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Dynamic Details: ERRAND SPECIFIC ── */}
+              {selectedPost.type.toLowerCase() === "errand" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                      <ShoppingBag className="h-4 w-4 text-orange-600 shrink-0" />
+                      <div className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Errand Scope & Route
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Store / Pickup Address:</span>
+                        <div className="font-medium text-foreground mt-0.5 flex items-start gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>{selectedPost.origin_address ?? "Not specified"}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Delivery / Destination Address:</span>
+                        <div className="font-medium text-foreground mt-0.5 flex items-start gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-rose-600 shrink-0 mt-0.5" />
+                          <span>{selectedPost.dest_address ?? "Not specified"}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between border-t pt-1.5">
+                        <span className="text-muted-foreground">Errand Category:</span>
+                        <span className="font-semibold text-foreground">
+                          {ERRAND_CATEGORY_LABELS[selectedPost.errand_category ?? ""] ??
+                            (selectedPost.errand_category ? selectedPost.errand_category.replace(/_/g, " ") : "Errand")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pickup Style:</span>
+                        <span className="font-medium text-foreground">
+                          {selectedPost.pickup_style === "multi_stop" ? "Multi-stop pickups" : "Single pickup point"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                      <DollarSign className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Errand Fees & Expenses
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-muted-foreground">Service Fee:</span>
+                        <span className="text-base font-bold text-foreground">
+                          {formatCents(selectedPost.errand_fee_cents ?? selectedPost.price_cents)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Est. Items Cost:</span>
+                        <span className="font-semibold text-muted-foreground">
+                          {selectedPost.item_cost_cents != null
+                            ? `~${formatCents(selectedPost.item_cost_cents)} (reimbursed)`
+                            : "None / Not specified"}
+                        </span>
+                      </div>
+                      {selectedPost.payment_method && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Payment Method:</span>
+                          <span className="font-medium uppercase text-foreground">
+                            {selectedPost.payment_method}
+                          </span>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t">
+                        <Link
+                          href={`/admin/bookings?q=${selectedPost.id}`}
+                          className="text-xs text-accent-blue hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          View Bookings for this Errand <ArrowRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Dynamic Details: PACKAGE SPECIFIC ── */}
+              {selectedPost.type.toLowerCase() === "package" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                      <Package className="h-4 w-4 text-purple-600 shrink-0" />
+                      <div className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Package Pickup & Delivery
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Pickup Location:</span>
+                        <div className="font-medium text-foreground mt-0.5 flex items-start gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>{selectedPost.origin_address ?? "Not specified"}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Delivery Destination:</span>
+                        <div className="font-medium text-foreground mt-0.5 flex items-start gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-rose-600 shrink-0 mt-0.5" />
+                          <span>{selectedPost.dest_address ?? "Not specified"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                      <DollarSign className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Delivery Pricing
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-muted-foreground">Delivery Fee:</span>
+                        <span className="text-base font-bold text-foreground">
+                          {formatCents(selectedPost.price_cents ?? selectedPost.errand_fee_cents)}
+                        </span>
+                      </div>
+                      {selectedPost.payment_method && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Payment Method:</span>
+                          <span className="font-medium uppercase text-foreground">
+                            {selectedPost.payment_method}
+                          </span>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t">
+                        <Link
+                          href={`/admin/bookings?q=${selectedPost.id}`}
+                          className="text-xs text-accent-blue hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          View Bookings for this Package <ArrowRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Dynamic Details: ROUTE SPECIFIC (Offers & Requests) ── */}
+              {(selectedPost.type.toLowerCase() === "route_offer" ||
+                selectedPost.type.toLowerCase() === "route_request" ||
+                selectedPost.type.toLowerCase() === "ride_request") && (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-card p-4 space-y-2">
+                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Route Information
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex items-start gap-2">
+                          <MapPin className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="text-muted-foreground">Origin:</span>
+                            <div className="font-medium text-foreground">
+                              {selectedPost.origin_address ?? "Origin not specified"}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <MapPin className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="text-muted-foreground">Destination:</span>
+                            <div className="font-medium text-foreground">
+                              {selectedPost.dest_address ?? "Destination not specified"}
+                            </div>
+                          </div>
+                        </div>
+                        {(selectedPost.route_distance_km || selectedPost.route_duration_min) && (
+                          <div className="text-muted-foreground text-[11px] pt-1 border-t border-border/40">
+                            {selectedPost.route_distance_km && (
+                              <span>Distance: {selectedPost.route_distance_km} km </span>
+                            )}
+                            {selectedPost.route_duration_min && (
+                              <span>&bull; Est. Duration: {selectedPost.route_duration_min} min</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border bg-card p-4 space-y-2">
+                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Pricing & Seat Capacity
+                      </div>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Price per Seat:</span>
+                          <span className="font-bold text-foreground text-sm">
+                            {formatCents(selectedPost.price_cents)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Capacity:</span>
+                          <span className="font-medium text-foreground">
+                            {selectedPost.seats_total ?? "Not specified"} seat
+                            {selectedPost.seats_total && selectedPost.seats_total > 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Seats Booked:</span>
+                          <span className="font-semibold text-foreground">
+                            {selectedPost.seats_filled ?? 0} booked
+                          </span>
+                        </div>
+                        {selectedPost.min_riders != null && (
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Minimum to go:</span>
+                            <span className="font-medium text-foreground">
+                              {selectedPost.min_riders} riders
+                            </span>
+                          </div>
+                        )}
+                        <div className="pt-2 border-t border-border/40">
+                          <Link
+                            href={`/admin/bookings?q=${selectedPost.id}`}
+                            className="text-xs text-accent-blue hover:underline inline-flex items-center gap-1 font-medium"
+                          >
+                            View Bookings for this Listing <ArrowRight className="h-3 w-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Schedule, Recurrence & Round-Trip Card */}
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Schedule & Recurrence Details
+                    </div>
+                    <div className="grid gap-3 text-xs sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div>
+                            <span className="text-muted-foreground">Departure Time:</span>
+                            <div className="font-medium text-foreground">
+                              {selectedPost.departure_at
+                                ? new Date(selectedPost.departure_at).toLocaleString()
+                                : "Flexible / Not set"}
+                            </div>
+                          </div>
+                        </div>
+                        {selectedPost.expires_at && (
+                          <div className="text-muted-foreground text-[11px]">
+                            Listing expires: {new Date(selectedPost.expires_at).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <Repeat className="h-4 w-4 text-accent-blue shrink-0" />
+                          <div>
+                            <span className="text-muted-foreground">Recurrence:</span>
+                            <div className="font-semibold text-foreground">
+                              {formatRepeatDays(selectedPost.repeat_days)}
+                            </div>
+                          </div>
+                        </div>
+                        {selectedPost.repeat_until && (
+                          <div className="text-muted-foreground text-[11px]">
+                            Repeats until: {new Date(selectedPost.repeat_until).toLocaleDateString()}
+                          </div>
+                        )}
+                        {selectedPost.is_round_trip && (
+                          <div className="font-medium text-emerald-600 dark:text-emerald-400">
+                            Round Trip {selectedPost.return_time ? `(Return at ${selectedPost.return_time})` : ""}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Instructions / Pickup Notes */}
+              {selectedPost.pickup_notes && (
+                <div className="rounded-lg border bg-card p-4 space-y-1">
                   <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Route Information
+                    Pickup Notes & Special Instructions
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-muted-foreground">Origin:</span>
-                        <div className="font-medium text-foreground">
-                          {selectedPost.origin_address ?? "Origin not specified"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-muted-foreground">Destination:</span>
-                        <div className="font-medium text-foreground">
-                          {selectedPost.dest_address ?? "Destination not specified"}
-                        </div>
-                      </div>
-                    </div>
-                    {(selectedPost.route_distance_km || selectedPost.route_duration_min) && (
-                      <div className="text-muted-foreground text-[11px] pt-1 border-t border-border/40">
-                        {selectedPost.route_distance_km && <span>Distance: {selectedPost.route_distance_km} km </span>}
-                        {selectedPost.route_duration_min && <span>&bull; Est. Duration: {selectedPost.route_duration_min} min</span>}
-                      </div>
-                    )}
-                  </div>
+                  <p className="text-xs text-foreground whitespace-pre-wrap mt-1">
+                    {selectedPost.pickup_notes}
+                  </p>
                 </div>
+              )}
 
-                <div className="rounded-lg border bg-card p-4 space-y-2">
+              {/* Description */}
+              {selectedPost.description && (
+                <div className="rounded-lg border bg-card p-4 space-y-1">
                   <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Pricing & Seat Capacity
+                    Full Description
                   </div>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Price per Seat:</span>
-                      <span className="font-bold text-foreground text-sm">
-                        {formatCents(selectedPost.price_cents)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Capacity:</span>
-                      <span className="font-medium text-foreground">
-                        {selectedPost.seats_total ?? "Not specified"} seat{selectedPost.seats_total && selectedPost.seats_total > 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Seats Booked:</span>
-                      <span className="font-semibold text-foreground">
-                        {selectedPost.seats_filled ?? 0} booked
-                      </span>
-                    </div>
-                    <div className="pt-2 border-t border-border/40">
-                      <Link
-                        href={`/admin/bookings?q=${selectedPost.id}`}
-                        className="text-xs text-accent-blue hover:underline inline-flex items-center gap-1 font-medium"
-                      >
-                        View Bookings for this Listing <ArrowRight className="h-3 w-3" />
-                      </Link>
-                    </div>
-                  </div>
+                  <p className="text-xs text-foreground whitespace-pre-wrap mt-1">
+                    {selectedPost.description}
+                  </p>
                 </div>
-              </div>
-
-              {/* Schedule, Recurrence & Round-Trip Card */}
-              <div className="rounded-lg border bg-card p-4 space-y-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Schedule & Recurrence Details
-                </div>
-                <div className="grid gap-3 text-xs sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div>
-                        <span className="text-muted-foreground">Departure Time:</span>
-                        <div className="font-medium text-foreground">
-                          {selectedPost.departure_at
-                            ? new Date(selectedPost.departure_at).toLocaleString()
-                            : "Flexible / Not set"}
-                        </div>
-                      </div>
-                    </div>
-                    {selectedPost.expires_at && (
-                      <div className="text-muted-foreground text-[11px]">
-                        Listing expires: {new Date(selectedPost.expires_at).toLocaleString()}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <Repeat className="h-4 w-4 text-accent-blue shrink-0" />
-                      <div>
-                        <span className="text-muted-foreground">Recurrence:</span>
-                        <div className="font-semibold text-foreground">
-                          {formatRepeatDays(selectedPost.repeat_days)}
-                        </div>
-                      </div>
-                    </div>
-                    {selectedPost.repeat_until && (
-                      <div className="text-muted-foreground text-[11px]">
-                        Repeats until: {new Date(selectedPost.repeat_until).toLocaleDateString()}
-                      </div>
-                    )}
-                    {selectedPost.is_round_trip && (
-                      <div className="font-medium text-emerald-600 dark:text-emerald-400">
-                        Round Trip {selectedPost.return_time ? `(Return at ${selectedPost.return_time})` : ""}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {selectedPost.pickup_notes && (
-                  <div className="pt-2 border-t text-xs">
-                    <span className="text-muted-foreground font-medium">Pickup Notes:</span>
-                    <p className="mt-0.5 text-foreground">{selectedPost.pickup_notes}</p>
-                  </div>
-                )}
-
-                {selectedPost.description && (
-                  <div className="pt-2 border-t text-xs">
-                    <span className="text-muted-foreground font-medium">Description:</span>
-                    <p className="mt-0.5 text-foreground whitespace-pre-wrap">{selectedPost.description}</p>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* Dispatched User Alerts & Push Notifications for this Listing */}
               <div className="rounded-lg border bg-card p-4 space-y-3">

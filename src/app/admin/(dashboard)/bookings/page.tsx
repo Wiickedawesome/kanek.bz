@@ -24,6 +24,9 @@ import {
   Copy,
   Check,
   Bell,
+  Briefcase,
+  ShoppingBag,
+  Package,
 } from "lucide-react";
 import {
   getAdminActionErrorMessage,
@@ -342,6 +345,62 @@ function synthesizeAuditItemsFromRaw(
   });
 }
 
+function PostTypeBadge({ type }: { type?: string | null }) {
+  if (!type) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        Booking
+      </span>
+    );
+  }
+  const norm = type.toLowerCase();
+  if (norm === "route_offer") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+        <Car className="h-3 w-3 shrink-0" />
+        <span>Route Offer</span>
+      </span>
+    );
+  }
+  if (norm === "route_request" || norm === "ride_request") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-400 border border-blue-500/20">
+        <Navigation className="h-3 w-3 shrink-0" />
+        <span>Ride Request</span>
+      </span>
+    );
+  }
+  if (norm === "job") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300 border border-amber-500/20">
+        <Briefcase className="h-3 w-3 shrink-0" />
+        <span>Job</span>
+      </span>
+    );
+  }
+  if (norm === "errand") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-semibold text-orange-800 dark:text-orange-300 border border-orange-500/20">
+        <ShoppingBag className="h-3 w-3 shrink-0" />
+        <span>Errand</span>
+      </span>
+    );
+  }
+  if (norm === "package") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:text-purple-300 border border-purple-500/20">
+        <Package className="h-3 w-3 shrink-0" />
+        <span>Package</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize">
+      {type.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 export default function BookingsPage() {
   return (
     <Suspense
@@ -377,6 +436,7 @@ function BookingsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(urlQuery);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [copiedBookingId, setCopiedBookingId] = useState(false);
   const [copiedDriverId, setCopiedDriverId] = useState(false);
   const [copiedRiderId, setCopiedRiderId] = useState(false);
@@ -451,6 +511,16 @@ function BookingsPageInner() {
           return false;
       }
 
+      // Service type filter
+      if (typeFilter !== "all") {
+        const norm = (item.postType ?? "").toLowerCase();
+        if (typeFilter === "route_offer" && norm !== "route_offer") return false;
+        if (typeFilter === "route_request" && norm !== "route_request" && norm !== "ride_request") return false;
+        if (typeFilter === "job" && norm !== "job") return false;
+        if (typeFilter === "errand" && norm !== "errand") return false;
+        if (typeFilter === "package" && norm !== "package") return false;
+      }
+
       // Search query
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
@@ -484,7 +554,32 @@ function BookingsPageInner() {
         paymentMethod.includes(q)
       );
     });
-  }, [auditItems, searchQuery, statusFilter]);
+  }, [auditItems, searchQuery, statusFilter, typeFilter]);
+
+  /* ── Service Type Counts for Quick-Filters ── */
+  const typeCounts = useMemo(() => {
+    let routeOffer = 0;
+    let routeRequest = 0;
+    let job = 0;
+    let errand = 0;
+    let pkg = 0;
+    for (const item of auditItems) {
+      const norm = (item.postType ?? "").toLowerCase();
+      if (norm === "route_offer") routeOffer++;
+      else if (norm === "route_request" || norm === "ride_request") routeRequest++;
+      else if (norm === "job") job++;
+      else if (norm === "errand") errand++;
+      else if (norm === "package") pkg++;
+    }
+    return {
+      all: auditItems.length,
+      route_offer: routeOffer,
+      route_request: routeRequest,
+      job,
+      errand,
+      package: pkg,
+    };
+  }, [auditItems]);
 
   /* ── Summary Metrics (Matching Exact App Lifecycle) ── */
   const metrics = useMemo(() => {
@@ -623,17 +718,32 @@ function BookingsPageInner() {
             )}
           </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="all">All Statuses</option>
-            <option value="in_progress">In Progress / Confirmed</option>
-            <option value="completed">Completed</option>
-            <option value="pending">Pending</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="h-8 rounded-lg border border-border/80 bg-card px-3 text-xs font-semibold text-foreground shadow-xs transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">All Service Types ({typeCounts.all})</option>
+              <option value="route_offer">Route Offers ({typeCounts.route_offer})</option>
+              <option value="route_request">Ride Requests ({typeCounts.route_request})</option>
+              <option value="job">Jobs & Gigs ({typeCounts.job})</option>
+              <option value="errand">Errands & Tasks ({typeCounts.errand})</option>
+              <option value="package">Package Deliveries ({typeCounts.package})</option>
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 rounded-lg border border-border/80 bg-card px-3 text-xs font-semibold text-foreground shadow-xs transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="in_progress">In Progress / Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -650,10 +760,11 @@ function BookingsPageInner() {
             <thead>
               <tr className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="px-3 py-2.5 text-left font-semibold">Booking ID</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Driver</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Rider</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Route</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Fare & Seats</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Type</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Driver / Provider</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Rider / Requester</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Route / Location</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Fare & Specs</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Payment</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Status</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Created</th>
@@ -679,6 +790,9 @@ function BookingsPageInner() {
                           Post: {item.postId.slice(0, 8)}
                         </div>
                       )}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <PostTypeBadge type={item.postType} />
                     </td>
                     <td className="px-3 py-3">
                       {item.driver ? (
@@ -735,7 +849,13 @@ function BookingsPageInner() {
                         {formatCents(item.agreedPriceCents)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {item.seatsBooked} seat{item.seatsBooked > 1 ? "s" : ""}
+                        {item.postType === "job"
+                          ? "Job Assignment"
+                          : item.postType === "errand"
+                          ? "Errand Task"
+                          : item.postType === "package"
+                          ? "Package Delivery"
+                          : `${item.seatsBooked} seat${item.seatsBooked > 1 ? "s" : ""}`}
                       </div>
                     </td>
                     <td className="px-3 py-3 capitalize">
@@ -788,10 +908,17 @@ function BookingsPageInner() {
             <div className="flex items-center justify-between border-b px-6 py-4 bg-muted/20">
               <div className="flex items-center gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-lg font-bold text-foreground">
-                      Ride Details
+                      {selectedItem.postType === "job"
+                        ? "Job Contract Details"
+                        : selectedItem.postType === "errand"
+                        ? "Errand Contract Details"
+                        : selectedItem.postType === "package"
+                        ? "Package Contract Details"
+                        : "Ride Details"}
                     </h3>
+                    <PostTypeBadge type={selectedItem.postType} />
                     {getStatusBadge(selectedItem.status)}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-0.5 font-mono">

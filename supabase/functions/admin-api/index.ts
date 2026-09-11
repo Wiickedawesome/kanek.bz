@@ -286,7 +286,9 @@ async function handleBookingsList({ service }: AdminContext) {
     postIds.length > 0
       ? service
           .from("posts")
-          .select("id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_remaining, created_at")
+          .select(
+            "id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_remaining, is_round_trip, return_time, repeat_days, repeat_until, expires_at, pickup_notes, vehicle_description, route_distance_km, route_duration_min, job_category, job_timeline, pay_rate_cents, pay_type, errand_category, errand_fee_cents, item_cost_cents, pickup_style, min_riders, payment_method, created_at"
+          )
           .in("id", postIds)
       : Promise.resolve({ data: [] }),
     contractIds.length > 0
@@ -810,7 +812,7 @@ async function handleContentList({ service }: AdminContext) {
     service
       .from("posts")
       .select(
-        "id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_filled, is_round_trip, return_time, repeat_days, repeat_until, expires_at, pickup_notes, vehicle_description, route_distance_km, route_duration_min, created_at"
+        "id, author_id, type, status, title, description, origin_address, dest_address, departure_at, price_cents, seats_total, seats_filled, is_round_trip, return_time, repeat_days, repeat_until, expires_at, pickup_notes, vehicle_description, route_distance_km, route_duration_min, job_category, job_timeline, pay_rate_cents, pay_type, errand_category, errand_fee_cents, item_cost_cents, pickup_style, min_riders, payment_method, created_at"
       )
       .order("created_at", { ascending: false })
       .limit(200),
