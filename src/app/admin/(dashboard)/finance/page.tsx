@@ -7,6 +7,7 @@ import {
   getAdminFinanceData,
 } from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
+import { DetailModal } from "@/components/admin/detail-modal";
 
 type EkyashTx = {
   id: string;
@@ -301,13 +302,13 @@ export default function FinancePage() {
         <>
           {tab === "transactions" && (
             <div className="space-y-4">
-              {/* Selected ekyash transaction detail */}
-              {selectedTxn && (
-                <div className="rounded-lg border bg-card p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium">Transaction Details</h3>
-                    <button onClick={() => setSelectedTxn(null)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
-                  </div>
+              {/* Selected ekyash transaction detail — centered modal */}
+              <DetailModal
+                open={!!selectedTxn}
+                onClose={() => setSelectedTxn(null)}
+                title="Transaction Details"
+              >
+                {selectedTxn && (
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Transaction ID: </span><span className="font-mono text-xs">{selectedTxn.id}</span></div>
                     <div><span className="text-muted-foreground">Contract: </span><span className="font-mono text-xs">{selectedTxn.contract_id}</span></div>
@@ -321,16 +322,16 @@ export default function FinancePage() {
                     <div><span className="text-muted-foreground">Status: </span><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(selectedTxn.status)}`}>{selectedTxn.status}</span></div>
                     <div><span className="text-muted-foreground">Created: </span>{new Date(selectedTxn.created_at).toLocaleString()}</div>
                   </div>
-                </div>
-              )}
+                )}
+              </DetailModal>
 
-              {/* Selected completed booking detail */}
-              {selectedBooking && (
-                <div className="rounded-lg border bg-card p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium">Completed Booking Details</h3>
-                    <button onClick={() => setSelectedBooking(null)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
-                  </div>
+              {/* Selected completed booking detail — centered modal */}
+              <DetailModal
+                open={!!selectedBooking}
+                onClose={() => setSelectedBooking(null)}
+                title="Completed Booking Details"
+              >
+                {selectedBooking && (
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Contract ID: </span><span className="font-mono text-xs">{selectedBooking.id}</span></div>
                     <div><span className="text-muted-foreground">Booking ID: </span><span className="font-mono text-xs">{selectedBooking.booking_id}</span></div>
@@ -342,8 +343,8 @@ export default function FinancePage() {
                     <div><span className="text-muted-foreground">Status: </span><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(selectedBooking.status)}`}>{selectedBooking.status}</span></div>
                     <div><span className="text-muted-foreground">Completed: </span>{selectedBooking.completed_at ? new Date(selectedBooking.completed_at).toLocaleString() : "—"}</div>
                   </div>
-                </div>
-              )}
+                )}
+              </DetailModal>
 
               {/* Unified Payment Transactions table */}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -525,12 +526,14 @@ export default function FinancePage() {
 
           {tab === "receipts" && (
             <div className="space-y-4">
-              {selectedReceipt && (
-                <div className="rounded-lg border bg-card p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium">Receipt Details</h3>
-                    <button onClick={() => setSelectedReceipt(null)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
-                  </div>
+              {/* Selected receipt detail — centered modal */}
+              <DetailModal
+                open={!!selectedReceipt}
+                onClose={() => setSelectedReceipt(null)}
+                title="Receipt Details"
+              >
+                {selectedReceipt && (
+                  <>
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Receipt ID: </span><span className="font-mono text-xs">{selectedReceipt.id}</span></div>
                     <div><span className="text-muted-foreground">User: </span>{userName(selectedReceipt.user_id)}</div>
@@ -547,8 +550,9 @@ export default function FinancePage() {
                       <p className="text-sm mt-1 text-red-600 dark:text-red-400">{selectedReceipt.error}</p>
                     </div>
                   )}
-                </div>
-              )}
+                  </>
+                )}
+              </DetailModal>
               <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
                 <thead>

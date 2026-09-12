@@ -6,6 +6,7 @@ import {
   getAdminCommunityData,
 } from "@/lib/admin-backend";
 import { useResolveNames } from "@/lib/use-resolve-names";
+import { DetailModal } from "@/components/admin/detail-modal";
 
 type GasPrice = {
   id: string;
@@ -90,17 +91,13 @@ export default function CommunityPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {selectedGas && (
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium">{selectedGas.station_name}</h3>
-                <button
-                  onClick={() => setSelectedGas(null)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Close
-                </button>
-              </div>
+          {/* Selected gas report detail — centered modal */}
+          <DetailModal
+            open={!!selectedGas}
+            onClose={() => setSelectedGas(null)}
+            title={selectedGas?.station_name ?? "Gas Report Details"}
+          >
+            {selectedGas && (
               <div className="grid gap-2 text-sm sm:grid-cols-2">
                 <div>
                   <span className="text-muted-foreground">Station ID: </span>
@@ -137,8 +134,8 @@ export default function CommunityPage() {
                   {new Date(selectedGas.reported_at).toLocaleString()}
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </DetailModal>
 
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
