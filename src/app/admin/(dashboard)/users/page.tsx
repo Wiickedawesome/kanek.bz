@@ -865,24 +865,34 @@ function UsersPageInner() {
 
             {detailDriver.review_status === "pending" && (() => {
               const hasDocs = detailDriverDocs.length > 0;
-              const allDocsApproved = hasDocs
-                ? detailDriverDocs.every((d) => d.review_status === "approved")
-                : Boolean(detailDriver.license_url && detailDriver.insurance_url);
-              const approvedCount = detailDriverDocs.filter((d) => d.review_status === "approved").length;
+              // Per-document approve buttons are gone; approval is a single
+              // driver-level decision after the admin visually reviews each
+              // document. The only hard gate is no rejected documents.
+              const noDocsRejected = hasDocs
+                ? detailDriverDocs.every((d) => d.review_status !== "rejected")
+                : true;
+              const hasCoreDocs = Boolean(detailDriver.license_url && detailDriver.insurance_url);
+              const canApprove = noDocsRejected && (hasDocs ? true : hasCoreDocs);
+              const rejectedCount = detailDriverDocs.filter((d) => d.review_status === "rejected").length;
 
               return (
                 <div className="space-y-2 pt-2 border-t">
-                  {!allDocsApproved && hasDocs && (
+                  {!canApprove ? (
                     <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                      All driver documents must be approved before the driver can be approved.
-                      ({approvedCount}/{detailDriverDocs.length} approved)
+                      {rejectedCount > 0
+                        ? ` rejected documents must be resolved before the driver can be approved.`
+                        : "Core documents (license and insurance) are required before the driver can be approved."}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Review each document above, then approve once at driver level.
                     </p>
                   )}
                   <div className="flex gap-2">
                     <ActionButton
                       variant="default"
                       loading={actionLoading === "driver"}
-                      disabled={!adminOpsEnabled || !allDocsApproved}
+                      disabled={!adminOpsEnabled || !canApprove}
                       onClick={() => reviewDriverDetail(detailDriver.id, "approved")}
                     >
                       Approve Driver
@@ -960,28 +970,18 @@ function UsersPageInner() {
                       {documentLoading === `driver-doc-open-${doc.id}` ? "Opening…" : "Open"}
                     </button>
                     {doc.review_status === "pending" && (
-                      <>
-                        <ActionButton
-                          variant="default"
-                          loading={actionLoading === doc.id}
-                          disabled={!adminOpsEnabled}
-                          onClick={() => reviewDriverDoc(doc.id, doc.profile_id, "approved")}
-                        >
-                          Approve
-                        </ActionButton>
-                        <ActionButton
-                          variant="destructive"
-                          loading={actionLoading === doc.id}
-                          disabled={!adminOpsEnabled}
-                          onClick={() => {
-                            const reason = prompt("Rejection reason:");
-                            if (reason !== null)
-                              reviewDriverDoc(doc.id, doc.profile_id, "rejected", reason);
-                          }}
-                        >
-                          Reject
-                        </ActionButton>
-                      </>
+                      <ActionButton
+                        variant="destructive"
+                        loading={actionLoading === doc.id}
+                        disabled={!adminOpsEnabled}
+                        onClick={() => {
+                          const reason = prompt("Rejection reason:");
+                          if (reason !== null)
+                            reviewDriverDoc(doc.id, doc.profile_id, "rejected", reason);
+                        }}
+                      >
+                        Reject
+                      </ActionButton>
                     )}
                   </div>
                 </div>
@@ -1023,28 +1023,18 @@ function UsersPageInner() {
                       {documentLoading === `rider-doc-open-${doc.id}` ? "Opening…" : "Open"}
                     </button>
                     {doc.review_status === "pending" && (
-                      <>
-                        <ActionButton
-                          variant="default"
-                          loading={actionLoading === doc.id}
-                          disabled={!adminOpsEnabled}
-                          onClick={() => reviewRiderDoc(doc.id, doc.user_id, "approved")}
-                        >
-                          Approve
-                        </ActionButton>
-                        <ActionButton
-                          variant="destructive"
-                          loading={actionLoading === doc.id}
-                          disabled={!adminOpsEnabled}
-                          onClick={() => {
-                            const reason = prompt("Rejection reason:");
-                            if (reason !== null)
-                              reviewRiderDoc(doc.id, doc.user_id, "rejected", reason);
-                          }}
-                        >
-                          Reject
-                        </ActionButton>
-                      </>
+                      <ActionButton
+                        variant="destructive"
+                        loading={actionLoading === doc.id}
+                        disabled={!adminOpsEnabled}
+                        onClick={() => {
+                          const reason = prompt("Rejection reason:");
+                          if (reason !== null)
+                            reviewRiderDoc(doc.id, doc.user_id, "rejected", reason);
+                        }}
+                      >
+                        Reject
+                      </ActionButton>
                     )}
                   </div>
                 </div>
@@ -1701,7 +1691,7 @@ function StatusBadge({ value }: { value?: string | null }) {
   };
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium text-center min-w-[5.5rem] ${
         colors[safeValue] ?? "bg-muted text-muted-foreground"
       }`}
     >
