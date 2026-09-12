@@ -105,7 +105,13 @@ export default function CommunityPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Reporter: </span>
-                  {userName(selectedGas.reporter_id)}
+                  {userName(selectedGas.reporter_id)}{" "}
+                  <a
+                    href={`/admin/users?view=${selectedGas.reporter_id}`}
+                    className="text-xs text-accent-blue hover:underline"
+                  >
+                    (view user)
+                  </a>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Location: </span>

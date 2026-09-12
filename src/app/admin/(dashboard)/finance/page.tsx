@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   getAdminActionErrorMessage,
@@ -84,6 +85,7 @@ type UnifiedTx = {
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function FinancePage() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("transactions");
   const [txns, setTxns] = useState<EkyashTx[]>([]);
   const [receipts, setReceipts] = useState<EmailReceipt[]>([]);
@@ -121,6 +123,27 @@ export default function FinancePage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Cross-page deep link: ?tab=receipts|donations selects the tab and
+  // ?q=<contractId|bookingId> opens the matching detail modal after load.
+  const urlTab = searchParams.get("tab");
+  const urlQuery = searchParams.get("q") ?? "";
+  useEffect(() => {
+    if (urlTab === "receipts" || urlTab === "donations") setTab(urlTab);
+  }, [urlTab]);
+  useEffect(() => {
+    if (!urlQuery || loading) return;
+    const q = urlQuery.toLowerCase();
+    const txn = txns.find((t) => t.id.toLowerCase() === q || t.contract_id?.toLowerCase() === q);
+    if (txn) {
+      setSelectedTxn(txn);
+      return;
+    }
+    const booking = completedBookings.find(
+      (b) => b.id.toLowerCase() === q || b.booking_id?.toLowerCase() === q
+    );
+    if (booking) setSelectedBooking(booking);
+  }, [urlQuery, loading, txns, completedBookings]);
 
   const allUserIds = useMemo(() => [
     ...txns.map((t) => t.payer_id),
@@ -311,11 +334,11 @@ export default function FinancePage() {
                 {selectedTxn && (
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Transaction ID: </span><span className="font-mono text-xs">{selectedTxn.id}</span></div>
-                    <div><span className="text-muted-foreground">Contract: </span><span className="font-mono text-xs">{selectedTxn.contract_id}</span></div>
+                    <div><span className="text-muted-foreground">Contract: </span><a href={`/admin/bookings?id=${selectedTxn.contract_id}`} className="font-mono text-xs text-accent-blue hover:underline">{selectedTxn.contract_id.slice(0, 8)}…</a></div>
                     <div><span className="text-muted-foreground">Order ID: </span><span className="font-mono text-xs">{selectedTxn.order_id ?? "—"}</span></div>
                     <div><span className="text-muted-foreground">Currency: </span>{selectedTxn.currency}</div>
-                    <div><span className="text-muted-foreground">Payer: </span>{selectedTxn.payer_name || userName(selectedTxn.payer_id)}</div>
-                    <div><span className="text-muted-foreground">Payee: </span>{selectedTxn.payee_name || userName(selectedTxn.payee_id)}</div>
+                    <div><span className="text-muted-foreground">Payer: </span>{selectedTxn.payer_name || userName(selectedTxn.payer_id)} <a href={`/admin/users?view=${selectedTxn.payer_id}`} className="text-xs text-accent-blue hover:underline">(view user)</a></div>
+                    <div><span className="text-muted-foreground">Payee: </span>{selectedTxn.payee_name || userName(selectedTxn.payee_id)} <a href={`/admin/users?view=${selectedTxn.payee_id}`} className="text-xs text-accent-blue hover:underline">(view user)</a></div>
                     <div><span className="text-muted-foreground">Amount: </span><span className="font-semibold">{fmt(selectedTxn.amount_cents)}</span></div>
                     <div><span className="text-muted-foreground">Platform Fee: </span>{fmt(selectedTxn.platform_fee_cents)}</div>
                     <div><span className="text-muted-foreground">Donation: </span>{fmt(selectedTxn.donation_cents)}</div>
@@ -335,8 +358,8 @@ export default function FinancePage() {
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Contract ID: </span><span className="font-mono text-xs">{selectedBooking.id}</span></div>
                     <div><span className="text-muted-foreground">Booking ID: </span><span className="font-mono text-xs">{selectedBooking.booking_id}</span></div>
-                    <div><span className="text-muted-foreground">Rider (Payer): </span><span className="font-medium">{selectedBooking.rider_name || (selectedBooking.rider_id ? userName(selectedBooking.rider_id) : userName(selectedBooking.parties[1] ?? selectedBooking.parties[0]))}</span></div>
-                    <div><span className="text-muted-foreground">Driver (Payee): </span><span className="font-medium">{selectedBooking.driver_name || (selectedBooking.driver_id ? userName(selectedBooking.driver_id) : userName(selectedBooking.parties[0]))}</span></div>
+                    <div><span className="text-muted-foreground">Rider (Payer): </span><span className="font-medium">{selectedBooking.rider_name || (selectedBooking.rider_id ? userName(selectedBooking.rider_id) : userName(selectedBooking.parties[1] ?? selectedBooking.parties[0]))}</span> <a href={`/admin/users?view=${selectedBooking.rider_id ?? selectedBooking.parties[1] ?? selectedBooking.parties[0]}`} className="text-xs text-accent-blue hover:underline">(view user)</a></div>
+                    <div><span className="text-muted-foreground">Driver (Payee): </span><span className="font-medium">{selectedBooking.driver_name || (selectedBooking.driver_id ? userName(selectedBooking.driver_id) : userName(selectedBooking.parties[0]))}</span> <a href={`/admin/users?view=${selectedBooking.driver_id ?? selectedBooking.parties[0]}`} className="text-xs text-accent-blue hover:underline">(view user)</a></div>
                     <div><span className="text-muted-foreground">Origin: </span>{selectedBooking.origin_address ?? "—"}</div>
                     <div><span className="text-muted-foreground">Destination: </span>{selectedBooking.dest_address ?? "—"}</div>
                     <div><span className="text-muted-foreground">Agreed Price: </span><span className="font-semibold">{fmt(selectedBooking.agreed_price_cents)}</span></div>
@@ -537,8 +560,8 @@ export default function FinancePage() {
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div><span className="text-muted-foreground">Receipt ID: </span><span className="font-mono text-xs">{selectedReceipt.id}</span></div>
                     <div><span className="text-muted-foreground">User: </span>{userName(selectedReceipt.user_id)}</div>
-                    <div><span className="text-muted-foreground">Contract: </span><span className="font-mono text-xs">{selectedReceipt.contract_id ?? "—"}</span></div>
-                    <div><span className="text-muted-foreground">Booking: </span><span className="font-mono text-xs">{selectedReceipt.booking_id ?? "—"}</span></div>
+                    <div><span className="text-muted-foreground">Contract: </span><a href={`/admin/bookings?id=${selectedReceipt.contract_id}`} className="font-mono text-xs text-accent-blue hover:underline">{selectedReceipt.contract_id ? `${selectedReceipt.contract_id.slice(0, 8)}…` : "—"}</a></div>
+                    <div><span className="text-muted-foreground">Booking: </span><a href={`/admin/bookings?id=${selectedReceipt.booking_id}`} className="font-mono text-xs text-accent-blue hover:underline">{selectedReceipt.booking_id ? `${selectedReceipt.booking_id.slice(0, 8)}…` : "—"}</a></div>
                     <div><span className="text-muted-foreground">Email To: </span>{selectedReceipt.email_to}</div>
                     <div><span className="text-muted-foreground">Type: </span>{selectedReceipt.type}</div>
                     <div><span className="text-muted-foreground">Status: </span><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(selectedReceipt.status)}`}>{selectedReceipt.status}</span></div>

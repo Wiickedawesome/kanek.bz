@@ -943,7 +943,32 @@ function BookingsPageInner() {
                     {selectedItem.contractId && (
                       <>
                         <span className="text-border">&bull;</span>
-                        <span>Contract: {selectedItem.contractId}</span>
+                        <span>Contract: {selectedItem.contractId.slice(0, 8)}</span>
+                        <Link
+                          href={`/admin/finance?tab=transactions&q=${selectedItem.contractId}`}
+                          className="font-sans text-[11px] text-accent-blue hover:underline inline-flex items-center gap-1 font-medium ml-1"
+                          title="View payments for this contract"
+                        >
+                          Payments <ArrowRight className="h-2.5 w-2.5" />
+                        </Link>
+                        {selectedItem.rider?.id && (
+                          <Link
+                            href={`/admin/users?view=${selectedItem.rider.id}`}
+                            className="font-sans text-[11px] text-accent-blue hover:underline inline-flex items-center gap-1 font-medium ml-1"
+                            title="Open rider profile in users"
+                          >
+                            Rider <ArrowRight className="h-2.5 w-2.5" />
+                          </Link>
+                        )}
+                        {selectedItem.driver?.id && (
+                          <Link
+                            href={`/admin/users?view=${selectedItem.driver.id}`}
+                            className="font-sans text-[11px] text-accent-blue hover:underline inline-flex items-center gap-1 font-medium ml-1"
+                            title="Open driver profile in users"
+                          >
+                            Driver <ArrowRight className="h-2.5 w-2.5" />
+                          </Link>
+                        )}
                       </>
                     )}
                     {selectedItem.postId && (
