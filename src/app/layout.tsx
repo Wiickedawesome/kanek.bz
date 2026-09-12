@@ -27,8 +27,10 @@ export const metadata: Metadata = {
     icon: [
       { url: "/logo/kanek_logo_icon.svg", type: "image/svg+xml" },
       { url: "/favicon.ico", sizes: "any" },
+      { url: "/logo/favicon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/logo/favicon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: "/logo/kanek_logo_icon.png",
+    apple: "/logo/apple-touch-icon.png",
   },
   openGraph: {
     title: "kanek — Community Mobility for Belize",
