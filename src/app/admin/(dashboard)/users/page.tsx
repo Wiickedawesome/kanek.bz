@@ -22,7 +22,6 @@ import {
   isAdminBackendConfigured,
   processAdminOnboardingReminders,
   resolveAdminDocumentUrl,
-  reviewAdminDriverApplication,
   reviewAdminDriverDocument,
   reviewAdminRiderDocument,
   sendAdminUserReminder,
@@ -367,25 +366,6 @@ function UsersPageInner() {
       setActionError(getAdminActionErrorMessage(err));
     } finally {
       setSweepLoading(false);
-    }
-  };
-
-  const reviewDriverDetail = async (
-    driverId: string,
-    status: "approved" | "rejected",
-    reason?: string
-  ) => {
-    if (!confirm(`${status === "approved" ? "Approve" : "Reject"} this driver application?`)) return;
-    setActionError(null);
-    setActionLoading("driver");
-    try {
-      await reviewAdminDriverApplication(driverId, status, reason);
-      if (viewUserId) await loadDetail(viewUserId);
-      else await load();
-    } catch (error) {
-      setActionError(getAdminActionErrorMessage(error));
-    } finally {
-      setActionLoading(null);
     }
   };
 
@@ -863,67 +843,10 @@ function UsersPageInner() {
               </div>
             )}
 
-            {detailDriver.review_status === "pending" && (() => {
-              const hasDocs = detailDriverDocs.length > 0;
-              // Per-document approve buttons are gone; approval is a single
-              // driver-level decision after the admin visually reviews each
-              // document. The only hard gate is no rejected documents.
-              const noDocsRejected = hasDocs
-                ? detailDriverDocs.every((d) => d.review_status !== "rejected")
-                : true;
-              const hasCoreDocs = Boolean(detailDriver.license_url && detailDriver.insurance_url);
-              const canApprove = noDocsRejected && (hasDocs ? true : hasCoreDocs);
-              const rejectedCount = detailDriverDocs.filter((d) => d.review_status === "rejected").length;
-
-              return (
-                <div className="space-y-2 pt-2 border-t">
-                  {!canApprove ? (
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                      {rejectedCount > 0
-                        ? ` rejected documents must be resolved before the driver can be approved.`
-                        : "Core documents (license and insurance) are required before the driver can be approved."}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Review each document above, then approve once at driver level.
-                    </p>
-                  )}
-                  <div className="flex gap-2">
-                    <ActionButton
-                      variant="default"
-                      loading={actionLoading === "driver"}
-                      disabled={!adminOpsEnabled || !canApprove}
-                      onClick={() => reviewDriverDetail(detailDriver.id, "approved")}
-                    >
-                      Approve Driver
-                    </ActionButton>
-                    <ActionButton
-                      variant="destructive"
-                      loading={actionLoading === "driver"}
-                      disabled={!adminOpsEnabled}
-                      onClick={() => {
-                        const reason = prompt("Rejection reason:");
-                        if (reason !== null) reviewDriverDetail(detailDriver.id, "rejected", reason);
-                      }}
-                    >
-                      Reject Driver
-                    </ActionButton>
-                  </div>
-                </div>
-              );
-            })()}
-            {detailDriver.review_status === "rejected" && (
-              <div className="flex gap-2 pt-2 border-t">
-                <ActionButton
-                  variant="default"
-                  loading={actionLoading === "driver"}
-                  disabled={!adminOpsEnabled}
-                  onClick={() => reviewDriverDetail(detailDriver.id, "approved")}
-                >
-                  Re-approve Driver
-                </ActionButton>
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Review each document above, then approve the account once all
+              documents are approved.
+            </p>
           </div>
         )}
 
