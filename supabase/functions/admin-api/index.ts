@@ -168,54 +168,6 @@ async function requireAdmin(request: Request): Promise<AdminContext> {
   };
 }
 
-async function requireUser(request: Request): Promise<{ userId: string; service: SupabaseClient }> {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
-    throw new HttpError(500, "Supabase function environment is missing required credentials.");
-  }
-
-  const authorization = request.headers.get("Authorization");
-  if (!authorization?.startsWith("Bearer ")) {
-    throw new HttpError(401, "Missing bearer token.");
-  }
-
-  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-    global: {
-      headers: {
-        Authorization: authorization,
-      },
-    },
-  });
-
-  const service = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-
-  const {
-    data: { user },
-    error: authError,
-  } = await authClient.auth.getUser();
-
-  if (authError || !user) {
-    throw new HttpError(401, "Invalid or expired session.");
-  }
-
-  return {
-    userId: user.id,
-    service,
-  };
-}
-
 async function insertAdminAction(
   service: SupabaseClient,
   action: {
@@ -1130,7 +1082,7 @@ async function handleIssueStrike({ service, adminUserId }: AdminContext, payload
 }
 
 async function handleUserReportStrike(
-  { userId, service }: { userId: string; service: SupabaseClient },
+  { adminUserId: userId, service }: AdminContext,
   payload: JsonRecord
 ) {
   const targetUserId = requireString(payload, "targetUserId");
@@ -2607,8 +2559,10 @@ Deno.serve(async (request) => {
     const payload = await readPayload(request);
     const path = normalizePath(new URL(request.url).pathname);
 
-    const isUserReport = path === "/strikes/report";
-    const context = isUserReport ? null : await requireAdmin(request);
+    // Every endpoint is admin-only. `/strikes/report` previously bypassed this
+    // check, which let any authenticated user issue strikes against any other
+    // account (and drive it to `suspended`). Do not reintroduce a bypass.
+    const context = await requireAdmin(request);
 
     let responseBody: unknown;
 
@@ -2634,11 +2588,9 @@ Deno.serve(async (request) => {
       case "/documents/resolve":
         responseBody = await handleResolveDocument(context!, payload);
         break;
-      case "/strikes/report": {
-        const userReportContext = await requireUser(request);
-        responseBody = await handleUserReportStrike(userReportContext, payload);
+      case "/strikes/report":
+        responseBody = await handleUserReportStrike(context!, payload);
         break;
-      }
       case "/finance/list":
         responseBody = await handleFinanceList(context!);
         break;
@@ -2692,7 +2644,8 @@ Deno.serve(async (request) => {
     }
 
     console.error(error);
-    const message = error instanceof Error ? error.message : String(error);
-    return json({ error: `Internal admin API error: ${message}` }, 500);
+    // Return a generic message: the detail is already in the server logs and
+    // echoing it here would leak Postgres/PostgREST internals to the caller.
+    return json({ error: "Internal admin API error." }, 500);
   }
 });
