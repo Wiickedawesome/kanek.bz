@@ -168,5 +168,5 @@ Latest live audit findings from April 27, 2026:
 
 - all app-facing public tables inspected had RLS enabled
 - the `documents` bucket is private
-- the current project has zero admin profiles, so the admin backend will remain unusable until one profile is promoted to `admin`
+- ~~the current project has zero admin profiles~~ — **stale.** An admin profile was created 2026-04-28 (`belizechain@gmail.com`, `account_status = active`) and re-verified against the live database on 2026-09-28, so the admin backend is usable
 - 3 of 7 stored document references include a trailing local blob URL suffix; the Edge Function now sanitizes those refs before generating signed URLs

@@ -443,8 +443,8 @@ From the repo README's latest live audit notes:
 
 - all app-facing public tables inspected had RLS enabled
 - the `documents` bucket is private
-- the current project has zero admin profiles, so the admin backend will remain
-  unusable until one profile is promoted to `admin`
+- an admin profile exists (`belizechain@gmail.com`), so the admin backend is
+  usable — re-verified against the live database on 2026-09-28
 
 ### Document access
 
@@ -659,11 +659,37 @@ paired changes must be called out explicitly.
 
 ## 18. Known issues and deferred work
 
-### Zero admin profiles blocks real admin access
+### Admin access is live
 
-Per the README's recorded live audit, the current shared project has zero admin
-profiles. That means the deployed admin backend will correctly reject all admin
-requests until a profile is promoted to `admin`.
+An admin profile exists in the shared project — `belizechain@gmail.com`,
+`account_status = active`, created 2026-04-28 — verified against the live
+database on 2026-09-28. The deployed admin backend is therefore usable.
+
+Earlier revisions of this file and the README claimed the project had zero admin
+profiles and that the backend was unusable. That was true at some earlier point
+and is now stale. Re-check the live data before repeating it.
+
+### `npm audit` fails in Security Checks
+
+`.github/workflows/security.yml` has failed on scheduled runs since at least
+2026-09-21 (and on push) because the `npm-audit` job exits non-zero on
+`npm audit --omit=dev --audit-level=high`. Measured 2026-09-28: **18
+vulnerabilities — 1 critical, 10 high, 4 moderate, 3 low** — in production
+dependencies, with `next@16.2.3` itself the critical entry.
+
+Calibration, so this is not over- or under-stated: this app is
+`output: "export"`, has **no `middleware.ts` / `proxy.ts`**, and uses no
+`next/headers`, `cookies()` or `headers()`. The middleware-bypass, SSR-DoS,
+Image-Optimization-API and CSP-nonce advisories in that list do **not** apply to
+the deployed artifact, because no Next.js server runs in production — Firebase
+Hosting serves static files. The real exposure is the build-time dependency
+install, and every one of these becomes live if this repo ever drops static
+export.
+
+The fix is a Next.js version bump (`fixAvailable` targets `next@16.3.6`), which
+is a dependency change and therefore not made unilaterally. Decision pending.
+Note that the failing `npm-audit` job does **not** gate deployment — the separate
+`Deploy to Firebase Hosting` workflow is unaffected and succeeds.
 
 ### Schema source of truth lives elsewhere
 
@@ -709,6 +735,7 @@ functions, inspect `/home/wicked/Projects/kanek` before making claims.
 | Date | Change |
 |---|---|
 | 2026-04-28 | Created repo-local factual guide for the Kanek website/admin repo. Verified stack versions, static export config, Firebase Hosting deploy workflow, env vars, `admin-api` boundary, and cross-repo ownership. |
+| 2026-09-28 | Re-verified against the live database and CI. Corrected the stale "zero admin profiles" claim in §11/§18 and the README — an admin profile has existed since 2026-04-28. Recorded the recurring `security.yml` `npm-audit` failure (18 production vulnerabilities, `next@16.2.3` critical) with the static-export applicability calibration. |
 
 ---
 

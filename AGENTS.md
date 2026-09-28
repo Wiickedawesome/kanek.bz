@@ -151,7 +151,8 @@ Proactively tell the user when:
 - a website/admin change depends on a sibling mobile-repo change
 - a repo secret or env expectation changed
 - a previous claim of yours was wrong
-- a task is blocked by the current lack of any admin profile in `profiles`
+- a task is blocked by an admin-access problem in `profiles` (no admin profile, or a
+  caller unexpectedly rejected by `admin-api`)
 
 Keep the notice short and concrete.
 
@@ -161,7 +162,7 @@ Keep the notice short and concrete.
 
 1. Never invent Next.js, Firebase, Supabase, or schema facts.
 2. Never treat this repo as the schema source of truth.
-3. Never assume `admin-api` can override a missing admin profile; it checks `profiles.role = 'admin'`.
+3. Never assume `admin-api` will authorise a caller: it checks `profiles.role = 'admin'` on every request. An authenticated session alone is not enough.
 4. Never recommend local Next.js server handlers as the production secure-admin fix while static export remains enabled.
 5. Never claim a website/admin failure belongs to this repo until you verify the owning surface.
 6. Never silently edit the sibling mobile repo.
